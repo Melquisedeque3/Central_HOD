@@ -44,3 +44,4 @@ export function render(root) {
     ${emptyState('✉', 'Caixa de entrada atualizada', 'Nenhuma mensagem pendente de resposta ou atenção imediata no momento.')}
   `;
 }
+
