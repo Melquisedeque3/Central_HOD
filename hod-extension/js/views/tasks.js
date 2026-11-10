@@ -90,7 +90,7 @@ export function render(root) {
 
                 <div class="kcards" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
                   ${cards.map(t => {
-                    const app = t.appId ? getApplication(t.appId) : null;
+                    const linkedApp = t.appId ? getApplication(t.appId) : null;
                     return `
                       <article class="kcard" tabindex="0">
                         <div class="kcard-body" style="text-align: left; width: 100%;">
@@ -100,7 +100,7 @@ export function render(root) {
                             </button>
                             <div style="flex: 1; min-width: 0;">
                               <div style="font-weight: 600; font-size: 13.5px; color: var(--ink); line-height: 1.35;">${esc(t.title)}</div>
-                              ${app ? `<small class="muted" style="display: block; margin-top: 3px; font-size: 11.5px;">🏢 ${esc(app.company)}</small>` : ''}
+                              ${linkedApp ? `<small class="muted" style="display: block; margin-top: 3px; font-size: 11.5px;">🏢 ${esc(linkedApp.company)}</small>` : ''}
                             </div>
                           </div>
                           <div class="kmeta" style="display: flex; gap: 6px; align-items: center; justify-content: space-between; margin-top: 6px;">

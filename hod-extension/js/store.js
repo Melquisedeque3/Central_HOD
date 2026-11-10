@@ -25,6 +25,17 @@ export const PRIORITIES = [
   { id: 'baixa', name: 'Pode esperar', color: '#8aacb1', weight: 3 },
 ];
 
+export const AI_PROVIDERS = [
+  { id: 'gemini', name: 'Google Gemini', placeholder: 'AIzaSy...', defaultModel: 'gemini-2.5-flash', docUrl: 'https://aistudio.google.com/apikey' },
+  { id: 'grok', name: 'xAI Grok', placeholder: 'xai-...', defaultModel: 'grok-beta', docUrl: 'https://console.x.ai' },
+  { id: 'anthropic', name: 'Anthropic Claude', placeholder: 'sk-ant-...', defaultModel: 'claude-3-5-sonnet-20241022', docUrl: 'https://console.anthropic.com' },
+  { id: 'openai', name: 'OpenAI (GPT-4o)', placeholder: 'sk-proj-...', defaultModel: 'gpt-4o', docUrl: 'https://platform.openai.com/api-keys' },
+  { id: 'openrouter', name: 'OpenRouter', placeholder: 'sk-or-...', defaultModel: 'auto', docUrl: 'https://openrouter.ai/keys' },
+  { id: 'groq', name: 'Groq (Ultra-rápido)', placeholder: 'gsk_...', defaultModel: 'llama-3.3-70b-versatile', docUrl: 'https://console.groq.com/keys' },
+  { id: 'nvidia', name: 'NVIDIA NIM', placeholder: 'nvapi-...', defaultModel: 'meta/llama-3.1-70b-instruct', docUrl: 'https://build.nvidia.com' },
+  { id: 'deepseek', name: 'DeepSeek', placeholder: 'sk-...', defaultModel: 'deepseek-chat', docUrl: 'https://platform.deepseek.com' },
+];
+
 export const STEP_KINDS = [
   'Candidatura', 'Certificação', 'Prova / Teste', 'Entrevista',
   'Documento', 'Follow-up', 'Onboarding', 'Outro',
@@ -77,7 +88,17 @@ function emptyState() {
     guidelines: [],
     settings: {
       obsidian: { enabled: false, url: 'http://127.0.0.1:27123', key: '', folder: 'HOD' },
-      ai: { provider: '', model: '', apiKey: '' },
+      apiKeys: {
+        gemini: '',
+        grok: '',
+        anthropic: '',
+        openai: '',
+        openrouter: '',
+        groq: '',
+        nvidia: '',
+        deepseek: '',
+      },
+      ai: { provider: 'gemini', model: 'gemini-2.5-flash' },
       ui: { density: 'comfortable' },
     },
     legacy: null,
@@ -157,6 +178,7 @@ function normalize(state) {
     ...base.settings,
     ...(state.settings || {}),
     obsidian: { ...base.settings.obsidian, ...(state.settings?.obsidian || {}) },
+    apiKeys: { ...base.settings.apiKeys, ...(state.settings?.apiKeys || {}) },
     ai: { ...base.settings.ai, ...(state.settings?.ai || {}) },
     ui: { ...base.settings.ui, ...(state.settings?.ui || {}) },
   };
@@ -455,7 +477,13 @@ export function updateSettings(section, patch) {
 
 export async function exportJSON() {
   await flush();
-  return JSON.stringify({ ...state, exportedAt: nowISO() }, null, 2);
+  const safe = JSON.parse(JSON.stringify(state));
+  // Protege credenciais: nunca exporta chaves privadas em arquivo de backup
+  if (safe.settings?.apiKeys) {
+    for (const k of Object.keys(safe.settings.apiKeys)) safe.settings.apiKeys[k] = '';
+  }
+  if (safe.settings?.obsidian?.key) safe.settings.obsidian.key = '';
+  return JSON.stringify({ ...safe, exportedAt: nowISO() }, null, 2);
 }
 
 export async function importJSON(text) {
