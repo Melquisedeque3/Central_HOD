@@ -211,11 +211,15 @@ body[data-page="home"] #view { padding-top: calc(var(--masthead) + 18px); }
 
 /* cores por rota (ícone, current, glide herdam --page-accent) */
 .dock-app[data-route="home"] > svg { border-color: rgba(239, 188, 144, .2); background: rgba(239, 188, 144, .14); color: #f1c39d; }
-.dock-app[data-route="pipeline"] > svg { background: rgba(86, 145, 166, .17); color: #9ecbd7; }
 .dock-app[data-route="apps"] > svg { background: rgba(179, 113, 104, .14); color: #d6aaa3; }
 .dock-app[data-route="tasks"] > svg { background: rgba(105, 169, 164, .15); color: #a9d5d0; }
+.dock-app[data-route="email"] > svg { background: rgba(100, 160, 220, .15); color: #9bc5f0; }
 .dock-app[data-route="study"] > svg { background: rgba(123, 119, 163, .17); color: #bbb8da; }
+.dock-app[data-route="routine"] > svg { background: rgba(220, 170, 100, .15); color: #e8c68c; }
+.dock-app[data-route="metrics"] > svg { background: rgba(86, 145, 166, .17); color: #9ecbd7; }
+.dock-app[data-route="ai"] > svg { background: rgba(180, 130, 220, .18); color: #d8b4f8; }
 .dock-app[data-route="settings"] > svg { background: rgba(120, 160, 120, .16); color: #b6d3b0; }
+.dock-app[data-route="pipeline"] > svg { background: rgba(86, 145, 166, .17); color: #9ecbd7; }
 
 /* tooltip acima do tile */
 .control-dock button > span {

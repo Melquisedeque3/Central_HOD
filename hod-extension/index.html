@@ -61,47 +61,50 @@
   <div class="dock-core" id="dock-core">
     <i class="dock-glide" id="dockGlide" aria-hidden="true"></i>
 
-    <button class="dock-app" data-nav="all" title="Todos os módulos" aria-label="Todos">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-    </button>
-
-    <button class="dock-app is-active" data-nav="home" data-route="home" title="Início" aria-label="Início" aria-current="page">
+    <!-- 1 - Home -->
+    <button class="dock-app is-active" data-nav="home" data-route="home" title="1. Início" aria-label="Início" aria-current="page">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 10.5 12 4l8 6.5V20h-5.2v-4.6h-5.6V20H4z"/></svg>
     </button>
 
-    <button class="dock-app" data-nav="tasks" data-route="tasks" title="Tarefas" aria-label="Tarefas">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="2" cy="6" r="1" fill="currentColor"/><circle cx="2" cy="12" r="1" fill="currentColor"/><circle cx="2" cy="18" r="1" fill="currentColor"/></svg>
-    </button>
-
-    <button class="dock-app has-badge" data-nav="apps" data-route="apps" title="Candidaturas & Processos" aria-label="Processos">
-      <span class="dock-badge-num" id="dockBadgeApps">3</span>
+    <!-- 2 - Candidaturas -->
+    <button class="dock-app has-badge" data-nav="apps" data-route="apps" title="2. Candidaturas (Kanban por Empresa)" aria-label="Candidaturas">
+      <span class="dock-badge-num" id="dockBadgeApps">0</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m22 7-10 6L2 7"/></svg>
     </button>
 
-    <button class="dock-app" data-nav="pipeline" data-route="pipeline" title="Pipeline Kanban" aria-label="Pipeline">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+    <!-- 3 - Tarefas -->
+    <button class="dock-app" data-nav="tasks" data-route="tasks" title="3. Tarefas (Kanban por Prioridade)" aria-label="Tarefas">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="2" cy="6" r="1" fill="currentColor"/><circle cx="2" cy="12" r="1" fill="currentColor"/><circle cx="2" cy="18" r="1" fill="currentColor"/></svg>
     </button>
 
-    <button class="dock-app" data-nav="metrics" data-route="pipeline" title="Métricas & Desempenho" aria-label="Métricas">
+    <!-- 4 - Email -->
+    <button class="dock-app" data-nav="email" data-route="email" title="4. Email (Por Empresa e Prioridade)" aria-label="Email">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 7L2 7"/></svg>
+    </button>
+
+    <!-- 5 - Aprendizagem -->
+    <button class="dock-app" data-nav="study" data-route="study" title="5. Aprendizagem & Guidelines" aria-label="Aprendizagem">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10M6 10h10M6 14h6"/></svg>
+    </button>
+
+    <!-- 6 - Rotina -->
+    <button class="dock-app" data-nav="routine" data-route="routine" title="6. Rotina Diária Otimizada" aria-label="Rotina">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    </button>
+
+    <!-- 7 - Métricas e Desempenho -->
+    <button class="dock-app" data-nav="metrics" data-route="metrics" title="7. Métricas & Desempenho" aria-label="Métricas">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 20h18M5 16l5-6 4 3 5-8"/></svg>
     </button>
 
-    <button class="dock-app" data-nav="documents" data-route="study" title="Documentos & Guidelines" aria-label="Documentos">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h10l6 6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M14 4v6h6"/></svg>
-    </button>
-
-    <button class="dock-app" data-nav="community" data-route="apps" title="Contatos & Empresas" aria-label="Contatos">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-    </button>
-
-    <button class="dock-app" data-nav="workflows" data-route="home" title="Automações & Rotina" aria-label="Automações">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m9 18 6-6-6-6M15 18l6-6-6-6"/></svg>
-    </button>
-
-    <div class="dock-divider" aria-hidden="true"></div>
-
-    <button class="dock-app dock-gemini" data-action="open-gemini" title="Gemini AI Multimodal" aria-label="Gemini">
+    <!-- 8 - IA -->
+    <button class="dock-app dock-gemini" data-nav="ai" data-route="ai" title="8. Central IA Multimodal" aria-label="IA">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07 19.07 4.93"/></svg>
+    </button>
+
+    <!-- 9 - Configurações -->
+    <button class="dock-app" data-nav="settings" data-route="settings" title="9. Configurações & Central de APIs" aria-label="Configurações">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
   </div>
 </nav>

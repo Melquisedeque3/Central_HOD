@@ -12,22 +12,41 @@ import * as pipeline from './views/pipeline.js';
 import * as apps from './views/apps.js';
 import * as appDetail from './views/appDetail.js';
 import * as tasks from './views/tasks.js';
+import * as email from './views/email.js';
 import * as study from './views/study.js';
+import * as routine from './views/routine.js';
+import * as metrics from './views/metrics.js';
+import * as ai from './views/ai.js';
 import * as settings from './views/settings.js';
 
 const ROUTES = [
   { pattern: /^\/?$/, view: home, name: 'home' },
   { pattern: /^\/home$/, view: home, name: 'home' },
-  { pattern: /^\/pipeline$/, view: pipeline, name: 'pipeline' },
   { pattern: /^\/apps$/, view: apps, name: 'apps' },
   { pattern: /^\/apps\/([^/]+)$/, view: appDetail, name: 'apps' },
   { pattern: /^\/tasks$/, view: tasks, name: 'tasks' },
+  { pattern: /^\/email$/, view: email, name: 'email' },
   { pattern: /^\/study$/, view: study, name: 'study' },
+  { pattern: /^\/routine$/, view: routine, name: 'routine' },
+  { pattern: /^\/metrics$/, view: metrics, name: 'metrics' },
+  { pattern: /^\/ai$/, view: ai, name: 'ai' },
   { pattern: /^\/settings$/, view: settings, name: 'settings' },
+  { pattern: /^\/pipeline$/, view: pipeline, name: 'pipeline' },
 ];
 
-const ROUTE_ORDER = ['home', 'pipeline', 'apps', 'tasks', 'study', 'settings'];
-const PAGE_LABEL = { home: 'Início', pipeline: 'Pipeline', apps: 'Processos', tasks: 'Tarefas', study: 'Estudo', settings: 'Ajustes' };
+const ROUTE_ORDER = ['home', 'apps', 'tasks', 'email', 'study', 'routine', 'metrics', 'ai', 'settings'];
+const PAGE_LABEL = {
+  home: 'Início',
+  apps: 'Candidaturas',
+  tasks: 'Tarefas',
+  email: 'Email',
+  study: 'Aprendizagem',
+  routine: 'Rotina',
+  metrics: 'Métricas',
+  ai: 'Central IA',
+  settings: 'Configurações',
+  pipeline: 'Pipeline'
+};
 
 const viewEl = $('#view');
 const viewBody = $('#view-body');
@@ -287,7 +306,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && (dockBackBtn?.matches(':focus-visible') || dockForwardBtn?.matches(':focus-visible'))) return;
   if (e.target.matches('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
   const n = Number(e.key);
-  if (!Number.isInteger(n) || n < 1 || n > 6) return;
+  if (!Number.isInteger(n) || n < 1 || n > 9) return;
   const target = dockCore?.querySelectorAll('.dock-app')[n - 1];
   if (!target || target.getAttribute('aria-current') === 'page') return;
   target.classList.add('is-pressed');
@@ -387,7 +406,7 @@ document.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key.toLowerCase() === 'g') { gPressed = Date.now(); return; }
   if (Date.now() - gPressed < 900) {
-    const map = { h: '#/home', p: '#/pipeline', t: '#/tasks', e: '#/study', s: '#/settings', a: '#/apps' };
+    const map = { h: '#/home', a: '#/apps', t: '#/tasks', m: '#/email', e: '#/study', r: '#/routine', k: '#/metrics', i: '#/ai', s: '#/settings' };
     const target = map[e.key.toLowerCase()];
     if (target) { location.hash = target; gPressed = 0; }
   }
