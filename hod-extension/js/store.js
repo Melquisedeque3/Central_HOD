@@ -279,6 +279,7 @@ export function createApplication(data = {}) {
 export function getApplication(id) {
   return state.applications.find(a => a.id === id) || null;
 }
+export const appById = getApplication;
 
 export function updateApplication(id, patch, historyText = '') {
   const app = getApplication(id);

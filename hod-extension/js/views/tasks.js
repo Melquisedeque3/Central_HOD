@@ -2,7 +2,7 @@
    views/tasks.js — Tarefas: Kanban por Prioridade + Lista
    ============================================================ */
 import { esc, dueInfo, emptyState, toDateInput, priorityDot } from '../ui.js';
-import { getState, PRIORITIES, priorityById, appById } from '../store.js';
+import { getState, PRIORITIES, priorityById, getApplication } from '../store.js';
 import { uiState } from '../state.js';
 import { taskRow, deadlineChip } from '../components.js';
 
@@ -90,7 +90,7 @@ export function render(root) {
 
                 <div class="kcards" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
                   ${cards.map(t => {
-                    const app = t.appId ? appById(t.appId) : null;
+                    const app = t.appId ? getApplication(t.appId) : null;
                     return `
                       <article class="kcard" tabindex="0">
                         <div class="kcard-body" style="text-align: left; width: 100%;">
