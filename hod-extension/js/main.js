@@ -63,17 +63,19 @@ function updateBreadcrumb(meta) {
   const isDetail = current.name === 'apps' && !!current.params.id;
 
   if (isDetail) {
-    parent.hidden = false;
-    parent.textContent = 'Processos';
-    parent.dataset.nav = 'apps';
-    sep.hidden = false;
-    sep2.hidden = false;
-    crumb.textContent = viewBody.dataset.crumb || 'Processo';
+    if (parent) {
+      parent.hidden = false;
+      parent.textContent = 'Processos';
+      parent.dataset.nav = 'apps';
+    }
+    if (sep) sep.hidden = false;
+    if (sep2) sep2.hidden = false;
+    if (crumb) crumb.textContent = viewBody.dataset.crumb || 'Processo';
   } else {
-    parent.hidden = true;
-    sep.hidden = false;
-    sep2.hidden = true;
-    crumb.textContent = PAGE_LABEL[current.name] || meta.kicker || 'HOD';
+    if (parent) parent.hidden = true;
+    if (sep) sep.hidden = false;
+    if (sep2) sep2.hidden = true;
+    if (crumb) crumb.textContent = PAGE_LABEL[current.name] || meta.kicker || 'HOD';
   }
 }
 
@@ -99,12 +101,17 @@ function render({ focus } = {}) {
   const subtitle = viewBody.dataset.subtitle || '';
   const isHome = current.name === 'home';
 
-  $('#page-head').hidden = isHome || viewBody.dataset.hidePageHead === '1';
-  $('#page-kicker').textContent = meta.kicker || '';
-  $('#page-title').textContent = pageTitle;
+  const pageHead = $('#page-head');
+  if (pageHead) pageHead.hidden = isHome || viewBody.dataset.hidePageHead === '1';
+  const kicker = $('#page-kicker');
+  if (kicker) kicker.textContent = meta.kicker || '';
+  const title = $('#page-title');
+  if (title) title.textContent = pageTitle;
   const subtitleEl = $('#page-subtitle');
-  subtitleEl.textContent = subtitle;
-  subtitleEl.hidden = !subtitle;
+  if (subtitleEl) {
+    subtitleEl.textContent = subtitle;
+    subtitleEl.hidden = !subtitle;
+  }
 
   document.body.dataset.page = current.name;
   document.title = pageTitle ? `${pageTitle} — HOD` : 'HOD';
