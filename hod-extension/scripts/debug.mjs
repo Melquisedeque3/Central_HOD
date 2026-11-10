@@ -1,0 +1,14 @@
+import { writeFileSync } from 'node:fs';
+const targets = await (await fetch('http://127.0.0.1:9222/json')).json();
+const page = targets.find(t => t.type === 'page');
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+let id = 0; const pending = new Map();
+ws.addEventListener('message', ev => { const m = JSON.parse(ev.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } });
+const send = (method, params = {}) => new Promise(r => { const rid = ++id; pending.set(rid, r); ws.send(JSON.stringify({ id: rid, method, params })); });
+const wait = ms => new Promise(r => setTimeout(r, ms));
+await new Promise(r => ws.addEventListener('open', r));
+await send('Runtime.enable');
+const ev = async expr => (await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })).result;
+console.log(JSON.stringify(await ev(`({url: location.href, raw: (localStorage.getItem('hod:state')||'').slice(0,80), len: (localStorage.getItem('hod:state')||'').length, keys: Object.keys(localStorage)})`), null, 1));
+console.log(JSON.stringify(await ev(`document.querySelector('#view')?.innerText.slice(0,200)`), null, 1));
+ws.close();

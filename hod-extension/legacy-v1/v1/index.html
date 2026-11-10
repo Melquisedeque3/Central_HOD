@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>HOD — Home Office Digital</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app-menu">
+
+  <!-- ============ HOME VIEW ============ -->
+  <div id="view-home" class="destination-view active">
+    <div id="app-menu-content-wrapper">
+
+      <!-- MASTHEAD -->
+      <div class="hq-masthead">
+        <div>
+          <button class="home-wordmark" id="wordmark">
+            <strong>HOD</strong>
+            <span>/ Início</span>
+          </button>
+          <div class="clock-line">
+            <span class="time" id="hdTime">00:00</span>
+            <div class="date-label">
+              <strong id="hdToday"></strong>
+              <span id="hdWeek"></span>
+            </div>
+          </div>
+        </div>
+        <div class="masthead-right">
+          <button class="btn-today primary" id="btnDiarioHoje">📋 Diário de hoje</button>
+          <button class="btn-today" id="btnSyncSheets" title="Sincronizar com Google Planilhas">↺ Sync</button>
+          <button class="btn-today" id="btnGoogleStatus" title="Configurações da Planilha">
+            <span id="googleDot" style="width:8px;height:8px;border-radius:50%;background:var(--muted2);display:inline-block"></span>
+            <span id="googleStatusText">Planilha</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- CALENDAR STRIP -->
+      <div class="calendar-strip">
+        <div class="calendar-heading">
+          <span>
+            <span id="calMonthYear"></span>
+          </span>
+          <span>
+            <span id="calUrgentLabel" style="color:var(--accent);font-size:11px"></span>
+            <span id="calTodayLabel" style="color:var(--muted);font-size:11px"></span>
+          </span>
+        </div>
+        <div class="date-track" id="dateTrack"></div>
+      </div>
+
+      <!-- WORKSPACE TILES (carrossel de seções) -->
+      <div class="workspace-launcher">
+        <header>
+          <h2>Seus espaços</h2>
+          <span class="section-label" id="totalOpenLabel"></span>
+        </header>
+        <div class="workspace-tiles">
+
+          <!-- Tile Tarefas -->
+          <button class="workspace-tile" data-nav="tasks">
+            <div class="tile-scene tile-tasks">
+              <span class="tile-icon">☑</span>
+              <span class="tile-badge" id="tileBadgeTasks">0</span>
+              <div class="tile-content">
+                <div>
+                  <div style="font-size:20px;font-weight:500;line-height:1.2">Meu Controle</div>
+                  <div style="font-size:11px;color:rgba(196,213,216,.7);margin-top:6px" id="tileSubTasks">tarefas abertas</div>
+                </div>
+                <button class="btn-enter" tabindex="-1">Entrar →</button>
+              </div>
+            </div>
+            <div class="tile-caption">
+              <h3>Tarefas</h3>
+              <p>Candidaturas, ações e prazos</p>
+            </div>
+          </button>
+
+          <!-- Tile Kanban -->
+          <button class="workspace-tile" data-nav="kanban">
+            <div class="tile-scene tile-kanban">
+              <span class="tile-icon">▦</span>
+              <span class="tile-badge" id="tileBadgeKanban">0</span>
+              <div class="tile-content">
+                <div>
+                  <div style="font-size:20px;font-weight:500;line-height:1.2">Projetos</div>
+                  <div style="font-size:11px;color:rgba(196,213,216,.7);margin-top:6px" id="tileSubKanban">no Kanban</div>
+                </div>
+                <button class="btn-enter" tabindex="-1">Entrar →</button>
+              </div>
+            </div>
+            <div class="tile-caption">
+              <h3>Kanban</h3>
+              <p>Fluxo completo de candidaturas</p>
+            </div>
+          </button>
+
+          <!-- Tile Eventos -->
+          <button class="workspace-tile" data-nav="events">
+            <div class="tile-scene tile-events">
+              <span class="tile-icon">🗓</span>
+              <div class="tile-content">
+                <div>
+                  <div style="font-size:20px;font-weight:500;line-height:1.2">Eventos</div>
+                  <div style="font-size:11px;color:rgba(196,213,216,.7);margin-top:6px">da semana</div>
+                </div>
+                <button class="btn-enter" tabindex="-1">Entrar →</button>
+              </div>
+            </div>
+            <div class="tile-caption">
+              <h3>Eventos</h3>
+              <p>Monitorias, encontros e agenda</p>
+            </div>
+          </button>
+
+          <!-- Tile Rotina -->
+          <button class="workspace-tile" data-nav="routine">
+            <div class="tile-scene tile-routine">
+              <span class="tile-icon">🔁</span>
+              <span class="tile-badge" id="tileBadgeRoutine">0</span>
+              <div class="tile-content">
+                <div>
+                  <div style="font-size:20px;font-weight:500;line-height:1.2">Rotina</div>
+                  <div style="font-size:11px;color:rgba(196,213,216,.7);margin-top:6px" id="tileSubRoutine">de hoje</div>
+                </div>
+                <button class="btn-enter" tabindex="-1">Entrar →</button>
+              </div>
+            </div>
+            <div class="tile-caption">
+              <h3>Rotina &amp; Radar</h3>
+              <p>Checklist diário e radar de vagas</p>
+            </div>
+          </button>
+
+          <!-- Tile Gemini -->
+          <button class="workspace-tile" id="tileGemini">
+            <div class="tile-scene tile-gemini">
+              <span class="tile-icon">✨</span>
+              <div class="tile-content">
+                <div>
+                  <div style="font-size:20px;font-weight:500;line-height:1.2">Assistente</div>
+                  <div style="font-size:11px;color:rgba(196,213,216,.7);margin-top:6px">Gemini IA</div>
+                </div>
+                <button class="btn-enter" tabindex="-1">Abrir →</button>
+              </div>
+            </div>
+            <div class="tile-caption">
+              <h3>Gemini IA</h3>
+              <p>Chat multimodal com prints</p>
+            </div>
+          </button>
+
+        </div>
+      </div>
+
+      <!-- ORIENTATION STRIP -->
+      <div class="home-orientation" id="homeOrientation">
+        <!-- Focus: próxima ação urgente -->
+        <section class="focus-region">
+          <header>
+            <span class="section-label">Próxima ação</span>
+            <span class="orientation-count" id="urgentCount">0 urgentes</span>
+          </header>
+          <h1 id="focusTask">Nenhuma tarefa urgente — ótimo trabalho!</h1>
+          <p class="focus-provenance" id="focusCompany"></p>
+          <div class="orientation-actions">
+            <button class="action primary sm" id="btnNewTaskHome">+ Nova tarefa</button>
+            <button class="action sm" id="btnNewProjHome">+ Novo projeto</button>
+          </div>
+        </section>
+
+        <!-- Decisões: em andamento -->
+        <section class="decisions-region">
+          <header>
+            <span class="section-label">Em andamento</span>
+            <span class="orientation-count" id="doingCount">0</span>
+          </header>
+          <div class="orientation-list" id="doingList"></div>
+        </section>
+
+        <!-- Rotina: checklist do dia -->
+        <section class="routine-region">
+          <header>
+            <span class="section-label">Rotina de hoje</span>
+            <span class="orientation-count" id="routineCount">0/0</span>
+          </header>
+          <div class="orientation-list" id="routineList"></div>
+        </section>
+      </div>
+
+    </div><!-- /content-wrapper -->
+  </div><!-- /home view -->
+
+  <!-- ============ TASKS VIEW ============ -->
+  <div id="view-tasks" class="destination-view">
+    <div id="app-menu-content-wrapper">
+      <div class="section-hero hero-tasks">
+        <div>
+          <h1>Meu Controle</h1>
+          <p>Candidaturas, ações e prazos — integrado ao Google Agenda</p>
+        </div>
+      </div>
+
+      <div class="view-header">
+        <div>
+          <div class="batch-bar" id="batchBar">
+            <input type="checkbox" id="checkAllTasks" title="Selecionar todas">
+            <span id="countSelectedTasks">0</span> selecionada(s)
+            <button class="action sm danger" id="btnDeleteSelectedTasks">🗑 Excluir selecionadas</button>
+          </div>
+        </div>
+        <div class="view-header-actions">
+          <button class="action primary" id="btnNewTaskTasks">+ Nova tarefa</button>
+        </div>
+      </div>
+
+      <!-- Filtros -->
+      <div class="task-filters">
+        <input type="text" id="fSearch" placeholder="🔎 Buscar empresa ou ação...">
+        <select id="fStatus">
+          <option value="">Todos os status</option>
+          <option>A fazer</option><option>Fazendo</option>
+          <option>Aguardando</option><option>Concluído</option><option>Encerrado</option>
+        </select>
+        <select id="fPrio">
+          <option value="">Todas as prioridades</option>
+          <option>Urgente</option><option>Importante</option><option>Pode esperar</option>
+        </select>
+        <select id="fGroup"><option value="">Todas as empresas</option></select>
+        <label class="filter-toggle">
+          <input type="checkbox" id="fHideDone"> Ocultar concluídas
+        </label>
+      </div>
+
+      <!-- Lista de tarefas estilo HQ -->
+      <div class="task-workspace" id="taskList"></div>
+
+    </div>
+  </div><!-- /tasks view -->
+
+  <!-- ============ KANBAN VIEW ============ -->
+  <div id="view-kanban" class="destination-view">
+    <div id="app-menu-content-wrapper">
+      <div class="section-hero hero-kanban">
+        <div>
+          <h1>Projetos / Kanban</h1>
+          <p>Arraste os cartões entre as etapas — Candidatura → Ativo</p>
+        </div>
+      </div>
+      <div class="view-header">
+        <div></div>
+        <div class="view-header-actions">
+          <button class="action primary" id="btnNewProjKanban">+ Novo projeto</button>
+        </div>
+      </div>
+      <div class="kanban-board" id="kanban"></div>
+    </div>
+  </div><!-- /kanban view -->
+
+  <!-- ============ EVENTS VIEW ============ -->
+  <div id="view-events" class="destination-view">
+    <div id="app-menu-content-wrapper">
+      <div class="section-hero hero-events">
+        <div>
+          <h1>Eventos da Semana</h1>
+          <p>Encontros, monitorias e agenda — integre ao seu Google Agenda</p>
+        </div>
+      </div>
+      <div class="days-grid" id="days"></div>
+    </div>
+  </div><!-- /events view -->
+
+  <!-- ============ ROUTINE VIEW ============ -->
+  <div id="view-routine" class="destination-view">
+    <div id="app-menu-content-wrapper">
+      <div class="section-hero hero-routine">
+        <div>
+          <h1>Rotina &amp; Radar</h1>
+          <p>Checklist diário, planejamento de domingo e radar de vagas</p>
+        </div>
+      </div>
+      <div class="view-header">
+        <div></div>
+        <div class="view-header-actions">
+          <button class="action sm" id="btnResetWeek">↺ Reiniciar semana</button>
+        </div>
+      </div>
+      <div id="routine"></div>
+    </div>
+  </div><!-- /routine view -->
+
+</div><!-- /app-menu -->
+
+<!-- ============ CONTROL DOCK ============ -->
+<div class="control-dock" id="controlDock">
+  <button class="dock-btn active" data-nav="home" id="dockHome">
+    <span>🏠</span>
+    <span>Início</span>
+  </button>
+  <button class="dock-btn" data-nav="tasks" id="dockTasks">
+    <span>☑</span>
+    <span>Tarefas</span>
+    <span class="dock-badge" id="dockBadgeTasks" style="display:none">0</span>
+  </button>
+  <button class="dock-btn" data-nav="kanban" id="dockKanban">
+    <span>▦</span>
+    <span>Kanban</span>
+    <span class="dock-badge" id="dockBadgeKanban" style="display:none">0</span>
+  </button>
+  <button class="dock-btn" data-nav="events" id="dockEvents">
+    <span>🗓</span>
+    <span>Eventos</span>
+  </button>
+  <button class="dock-btn" data-nav="routine" id="dockRoutine">
+    <span>🔁</span>
+    <span>Rotina</span>
+  </button>
+  <div class="dock-divider"></div>
+  <button class="dock-btn" id="dockGemini">
+    <span>✨</span>
+    <span>Gemini</span>
+  </button>
+  <button class="dock-btn" id="dockConfig">
+    <span>⚙</span>
+    <span>Config</span>
+  </button>
+</div>
+
+<!-- ============ MODAL TAREFA / PROJETO ============ -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="mTitle">Nova tarefa</h3>
+      <button class="x-btn" id="btnCloseModal">×</button>
+    </div>
+    <div class="modal-body" id="mBody"></div>
+    <div class="modal-foot">
+      <button class="action" id="btnCancelModal">Cancelar</button>
+      <button class="action primary" id="mSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL CONFIGURAÇÃO GOOGLE / CONFIG ============ -->
+<div class="overlay" id="googleModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Configurações</h3>
+      <button class="x-btn" id="btnCloseGoogleModal">×</button>
+    </div>
+    <div class="modal-body">
+      <!-- Google Sheets -->
+      <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">Google Planilhas</div>
+      <div class="field">
+        <label>Status da Conexão</label>
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg-mid);padding:10px 13px;border-radius:8px;border:1px solid rgba(100,125,130,.4)">
+          <span id="modalGoogleEmail" style="font-size:13px;font-weight:500">Não configurado</span>
+          <span id="badgeModalStatus" style="font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.05);color:var(--muted)">Pendente</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>URL do Apps Script (termina em /exec)</label>
+        <input type="text" id="inputSheetId" placeholder="https://script.google.com/macros/s/.../exec">
+      </div>
+      <div class="field" style="display:flex;gap:9px">
+        <button class="action" style="flex:1" id="btnPullSheets">⬇ Puxar da Planilha</button>
+        <button class="action primary" style="flex:1" id="btnPushSheets">⬆ Salvar na Planilha</button>
+      </div>
+
+      <!-- Separador -->
+      <div style="height:1px;background:var(--line);margin:8px 0"></div>
+
+      <!-- Backup -->
+      <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">Dados Locais</div>
+      <div style="display:flex;gap:9px;flex-wrap:wrap">
+        <button class="action sm" id="btnExportJSON">⬇ Backup JSON</button>
+        <button class="action sm" id="btnImportTrigger">⬆ Restaurar JSON</button>
+        <button class="action sm danger" id="btnResetAll">↺ Resetar tudo</button>
+      </div>
+      <input type="file" id="importFile" accept=".json" style="display:none">
+    </div>
+    <div class="modal-foot">
+      <button class="action" id="btnCancelGoogleModal">Fechar</button>
+      <button class="action primary" id="btnSaveGoogleSettings">Salvar Link</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TOAST ============ -->
+<div id="toast"></div>
+
+<!-- ============ GEMINI DRAWER ============ -->
+<div id="geminiDrawer">
+  <div class="g-head">
+    <h3>✨ Gemini</h3>
+    <select id="selectGeminiModel">
+      <option value="gemini-2.5-flash">Flash</option>
+      <option value="gemini-2.5-pro">Pro</option>
+      <option value="gemini-2.5-flash-lite">Flash Lite</option>
+    </select>
+    <button class="x-btn" id="btnCloseGemini">×</button>
+  </div>
+
+  <div class="g-config" id="geminiKeyBox">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:500;color:var(--accent);font-size:12px">Chave de API do Gemini:</span>
+      <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue);font-size:11px">Obter grátis ↗</a>
+    </div>
+    <div style="display:flex;gap:6px">
+      <input type="password" id="inputGeminiKey" placeholder="Cole sua chave AIzaSy...">
+      <button class="action sm primary" id="btnSaveGeminiKey">Salvar</button>
+    </div>
+  </div>
+
+  <div class="g-messages" id="geminiMessages">
+    <div class="g-msg gemini">
+      👋 Olá! Envie texto, e-mail de convocação ou <b>cole um print com Ctrl+V</b> — identifico empresa, prazos e cadastro tudo automaticamente.
+    </div>
+  </div>
+
+  <div class="g-footer">
+    <div class="g-img-preview" id="geminiImgPreview">
+      <img id="geminiImgThumb" src="" alt="Print">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="geminiImgName">Imagem</span>
+      <button class="x-btn" id="btnRemoveGeminiImg" style="font-size:16px">×</button>
+    </div>
+    <div class="g-input-row">
+      <textarea id="geminiInput" placeholder="Digite ou cole um print com Ctrl+V..." rows="1"></textarea>
+      <div class="g-actions-bar">
+        <label class="g-icon-btn" title="Anexar imagem">
+          📷
+          <input type="file" id="geminiFileInput" accept="image/*" style="display:none">
+        </label>
+        <button class="action primary sm" id="btnSendGemini" style="height:34px;padding:0 12px">Enviar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="google-api.js"></script>
+<script src="gemini-api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

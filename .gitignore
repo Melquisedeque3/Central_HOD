@@ -1,0 +1,11 @@
+# Sistema Operacional
+.DS_Store
+Thumbs.db
+
+# Backups
+*.bak
+
+# Ferramentas e dependências externas
+craft-anything/
+craft-output/
+hod-extension/.tools/

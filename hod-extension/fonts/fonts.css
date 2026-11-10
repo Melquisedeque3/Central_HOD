@@ -1,0 +1,8 @@
+/* Rubik (variable, subset latin) — empacotada para funcionar offline e sem CSP externa. */
+@font-face {
+  font-family: 'Rubik';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('rubik-var.woff2') format('woff2');
+}
