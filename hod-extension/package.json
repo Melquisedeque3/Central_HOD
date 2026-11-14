@@ -1,0 +1,24 @@
+{
+  "name": "hod-central-home-office",
+  "version": "4.0.0",
+  "private": true,
+  "type": "module",
+  "description": "HOD — página local para operar candidaturas, tarefas e rotina. Obsidian é a fonte de verdade, Hermes Agent é o cérebro operacional. Sem build e sem dependências.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "seed": "node scripts/seed.mjs"
+  },
+  "keywords": [
+    "obsidian",
+    "hermes-agent",
+    "local-first",
+    "markdown",
+    "job-search"
+  ],
+  "license": "MIT"
+}

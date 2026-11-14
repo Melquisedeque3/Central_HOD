@@ -100,6 +100,7 @@ export function relativeTime(iso) {
   if (dias < 30) return `${dias} d atrás`;
   return fmtDate(iso);
 }
+export const timeAgo = relativeTime;
 
 export function greeting() {
   const h = new Date().getHours();
@@ -254,29 +255,54 @@ export function select(label, name, options, value = '') {
 }
 
 /* ---------- markdown mínimo e seguro ---------- */
+function inlineMd(s) {
+  return s
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|\s)\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
 export function miniMarkdown(md) {
   const lines = esc(md || '').split('\n');
   let html = '';
   let inList = false;
-  const inline = s => s
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|\s)\*([^*\n]+)\*/g, '$1<em>$2</em>')
-    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
   for (const line of lines) {
     if (/^\s*[-*]\s+/.test(line)) {
       if (!inList) { html += '<ul>'; inList = true; }
-      html += `<li>${inline(line.replace(/^\s*[-*]\s+/, ''))}</li>`;
+      html += `<li>${inlineMd(line.replace(/^\s*[-*]\s+/, ''))}</li>`;
       continue;
     }
     closeList();
-    if (/^###\s+/.test(line)) html += `<h4>${inline(line.replace(/^###\s+/, ''))}</h4>`;
-    else if (/^##\s+/.test(line)) html += `<h3>${inline(line.replace(/^##\s+/, ''))}</h3>`;
-    else if (/^#\s+/.test(line)) html += `<h3>${inline(line.replace(/^#\s+/, ''))}</h3>`;
+    if (/^###\s+/.test(line)) html += `<h4>${inlineMd(line.replace(/^###\s+/, ''))}</h4>`;
+    else if (/^##\s+/.test(line)) html += `<h3>${inlineMd(line.replace(/^##\s+/, ''))}</h3>`;
+    else if (/^#\s+/.test(line)) html += `<h3>${inlineMd(line.replace(/^#\s+/, ''))}</h3>`;
     else if (line.trim() === '') html += '';
-    else html += `<p>${inline(line)}</p>`;
+    else html += `<p>${inlineMd(line)}</p>`;
   }
   closeList();
   return html || '<p class="muted">Sem conteúdo.</p>';
+}
+
+/**
+ * Markdown de mensagem de chat (respostas do agente).
+ * Seguro por construção: escapa TODO o texto antes de qualquer regex,
+ * então nenhum HTML vindo do agente ou do usuário é interpretado.
+ */
+export function chatMarkdown(text) {
+  let html = esc(text ?? '');
+
+  const blocks = [];
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    blocks.push(`<pre class="md-pre"><code>${code.replace(/\n$/, '')}</code></pre>`);
+    return `\u0000BLOCK${blocks.length - 1}\u0000`;
+  });
+
+  html = inlineMd(html);
+  html = html.replace(/\n{2,}/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  html = `<p>${html}</p>`;
+  html = html.replace(/\u0000BLOCK(\d+)\u0000/g, (_, i) => blocks[Number(i)]);
+  return html;
 }

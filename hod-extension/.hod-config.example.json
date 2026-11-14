@@ -1,0 +1,28 @@
+{
+  "obsidian": {
+    "enabled": false,
+    "url": "http://127.0.0.1:27123",
+    "key": "",
+    "folder": ""
+  },
+  "hermes": {
+    "enabled": false,
+    "url": "http://127.0.0.1:8642",
+    "key": "",
+    "model": "hermes-3-llama-3.1-405b",
+    "dashboard": "http://127.0.0.1:9119"
+  },
+  "routine": {
+    "slots": [
+      { "id": "rot_1", "start": "07:00", "end": "08:30", "label": "Foco Total / Tarefas Críticas" },
+      { "id": "rot_2", "start": "08:30", "end": "09:00", "label": "Revisão de E-mails & Comunicação" },
+      { "id": "rot_3", "start": "09:00", "end": "11:00", "label": "Estudo de Guidelines & Preparação" },
+      { "id": "rot_4", "start": "11:00", "end": "12:00", "label": "Avanço em Candidaturas" },
+      { "id": "rot_5", "start": "13:30", "end": "15:30", "label": "Execução de Testes / Entrevistas" },
+      { "id": "rot_6", "start": "15:30", "end": "17:00", "label": "Follow-ups & Fechamento do Dia" }
+    ]
+  },
+  "ui": {
+    "theme": "dark"
+  }
+}

@@ -1,0 +1,20 @@
+# dependências (o projeto não usa nenhuma, mas evita acidentes)
+node_modules/
+
+# vault padrão (dados pessoais — nunca versionar)
+vault/
+*.md.bak
+
+# metadados derivados do vault
+.hod/
+
+# credenciais locais (Hermes / Obsidian)
+.hod-config.json
+
+# ferramentas e arquivos locais de pesquisa
+.tools/
+
+# sistema
+.DS_Store
+*.log
+*.pid

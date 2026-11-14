@@ -1,8 +1,9 @@
 /* ============================================================
    views/tasks.js — Tarefas: Kanban por Prioridade + Lista
+   Arrastar um card entre colunas muda a prioridade da tarefa.
    ============================================================ */
-import { esc, dueInfo, emptyState, toDateInput, priorityDot } from '../ui.js';
-import { getState, PRIORITIES, priorityById, getApplication } from '../store.js';
+import { esc, dueInfo, emptyState, toDateInput } from '../ui.js';
+import { getState, PRIORITIES, getApplication, updateTask } from '../store.js';
 import { uiState } from '../state.js';
 import { taskRow, deadlineChip } from '../components.js';
 
@@ -14,7 +15,7 @@ export function render(root) {
   const q = f.q.toLowerCase();
 
   const allTasks = state.tasks || [];
-  let tasks = allTasks.filter(t =>
+  const tasks = allTasks.filter(t =>
     (!q || `${t.title} ${t.notes}`.toLowerCase().includes(q)) &&
     (!f.priority || t.priority === f.priority) &&
     (!f.app || t.appId === f.app) &&
@@ -41,6 +42,11 @@ export function render(root) {
       <div class="task-list">${list.map(t => taskRow(t)).join('')}</div>
     </section>` : '';
 
+  const kanbanTasks = allTasks.filter(t => t.status !== 'done' &&
+    (!q || `${t.title} ${t.notes}`.toLowerCase().includes(q)) &&
+    (!f.app || t.appId === f.app) &&
+    f.status !== 'done');
+
   root.innerHTML = `
     <div class="toolbar">
       <div class="filters">
@@ -61,25 +67,25 @@ export function render(root) {
         </select>
       </div>
       <div class="toolbar-right">
+        <span class="muted small">${openTasks.length} em aberto · ${late.length} atrasada(s)</span>
         <button class="btn primary" data-action="new-task">+ Nova tarefa</button>
       </div>
     </div>
 
     ${!allTasks.length ? emptyState('☑', 'Nenhuma tarefa ainda', 'Capture o que precisa fazer — elas serão organizadas por prioridade.', '<button class="btn primary" data-action="new-task">Criar tarefa</button>') : `
 
-      <!-- SEÇÃO KANBAN POR PRIORIDADE -->
       <div style="margin-bottom: 34px;">
         <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px;">
           <h3 style="font-size: 15px; font-weight: 500; letter-spacing: 0.02em; color: var(--ink);">
-            Visão Kanban <span style="font-size: 13px; color: var(--muted-2); font-weight: 400;">(Quadros organizados por prioridade)</span>
+            Visão Kanban <span style="font-size: 13px; color: var(--muted-2); font-weight: 400;">(arraste um card para mudar a prioridade)</span>
           </h3>
         </div>
 
         <div class="kanban" role="list" style="display: flex; gap: 16px; overflow-x: auto; padding-bottom: 14px;">
           ${PRIORITIES.map(p => {
-            const cards = openTasks.filter(t => (t.priority || 'normal') === p.id);
+            const cards = kanbanTasks.filter(t => (t.priority || 'normal') === p.id);
             return `
-              <section class="kcol" style="min-width: 260px; max-width: 300px; flex: 1;" role="listitem">
+              <section class="kcol" data-priority="${p.id}" style="min-width: 260px; max-width: 300px; flex: 1;" role="listitem" aria-label="${esc(p.name)}">
                 <header class="kcol-head" style="display: flex; align-items: center; justify-content: space-between;">
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <span class="kdot" style="background: ${p.color};"></span>
@@ -88,16 +94,14 @@ export function render(root) {
                   <span class="kcount">${cards.length}</span>
                 </header>
 
-                <div class="kcards" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+                <div class="kcards" data-drop-priority="${p.id}" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
                   ${cards.map(t => {
                     const linkedApp = t.appId ? getApplication(t.appId) : null;
                     return `
-                      <article class="kcard" tabindex="0">
+                      <article class="kcard" tabindex="0" draggable="true" data-id="${t.id}">
                         <div class="kcard-body" style="text-align: left; width: 100%;">
                           <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;">
-                            <button class="task-check" data-action="toggle-task" data-id="${t.id}" aria-label="Concluir" style="cursor: pointer; margin-top: 2px;">
-                              <span class="box"></span>
-                            </button>
+                            <button class="task-check" data-action="toggle-task" data-id="${t.id}" aria-label="Concluir" style="cursor: pointer; margin-top: 2px;"><span class="box"></span></button>
                             <div style="flex: 1; min-width: 0;">
                               <div style="font-weight: 600; font-size: 13.5px; color: var(--ink); line-height: 1.35;">${esc(t.title)}</div>
                               ${linkedApp ? `<small class="muted" style="display: block; margin-top: 3px; font-size: 11.5px;">🏢 ${esc(linkedApp.company)}</small>` : ''}
@@ -114,7 +118,7 @@ export function render(root) {
                       </article>
                     `;
                   }).join('')}
-                  <button class="kadd" data-action="new-task" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px dashed var(--line); background: transparent; color: var(--muted-2); cursor: pointer; font-size: 12.5px;">+ adicionar ${esc(p.name.toLowerCase())}</button>
+                  <button class="kadd" data-action="new-task" data-priority="${p.id}" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px dashed var(--line); background: transparent; color: var(--muted-2); cursor: pointer; font-size: 12.5px;">+ adicionar ${esc(p.name.toLowerCase())}</button>
                 </div>
               </section>
             `;
@@ -122,7 +126,6 @@ export function render(root) {
         </div>
       </div>
 
-      <!-- SEÇÃO LISTA COMPLETA -->
       <div>
         <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px;">
           <h3 style="font-size: 15px; font-weight: 500; letter-spacing: 0.02em; color: var(--ink);">
@@ -139,4 +142,46 @@ export function render(root) {
       </div>
     `}
   `;
+
+  wirePriorityDrag(root);
+}
+
+function wirePriorityDrag(root) {
+  let draggingId = null;
+
+  root.querySelectorAll('.kcard[draggable]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      draggingId = el.dataset.id;
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggingId);
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      draggingId = null;
+      root.querySelectorAll('.kcol').forEach(c => c.classList.remove('dragover'));
+    });
+  });
+
+  root.querySelectorAll('[data-drop-priority]').forEach(zone => {
+    zone.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      zone.closest('.kcol')?.classList.add('dragover');
+    });
+    zone.addEventListener('dragleave', e => {
+      if (zone.contains(e.relatedTarget)) return;
+      zone.closest('.kcol')?.classList.remove('dragover');
+    });
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.closest('.kcol')?.classList.remove('dragover');
+      const id = draggingId || e.dataTransfer.getData('text/plain');
+      const priority = zone.dataset.dropPriority;
+      if (!id || !priority) return;
+      const task = getState().tasks.find(t => t.id === id);
+      if (!task || task.priority === priority) return;
+      updateTask(id, { priority });
+    });
+  });
 }

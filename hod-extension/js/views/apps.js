@@ -1,10 +1,12 @@
 /* ============================================================
    views/apps.js — Candidaturas: Kanban por Empresa + Lista
+   Arrastar um card para a coluna de outra empresa reatribui a
+   empresa daquela candidatura (persistido no vault).
    ============================================================ */
-import { esc, emptyState, dueInfo, fmtDate, priorityDot, progressBar } from '../ui.js';
-import { getState, STAGES, stageById, priorityById } from '../store.js';
+import { esc, emptyState, fmtDate, priorityDot, progressBar } from '../ui.js';
+import { getState, STAGES, stageById, updateApplication } from '../store.js';
 import { uiState } from '../state.js';
-import { deadlineChip, stageChip } from '../components.js';
+import { deadlineChip } from '../components.js';
 
 export const meta = { kicker: 'Candidaturas', title: 'Candidaturas por Empresa' };
 
@@ -22,7 +24,6 @@ export function render(root) {
       return da - db || a.company.localeCompare(b.company);
     });
 
-  // Agrupamento por Empresa para o Kanban
   const companyGroups = {};
   filteredApps.forEach(app => {
     const company = (app.company || 'Sem empresa').trim();
@@ -31,6 +32,7 @@ export function render(root) {
   });
 
   const companies = Object.keys(companyGroups).sort((a, b) => a.localeCompare(b));
+  const hasFilter = !!(q || f.stage);
 
   root.innerHTML = `
     <div class="toolbar">
@@ -42,19 +44,20 @@ export function render(root) {
         </select>
       </div>
       <div class="toolbar-right">
-        <span class="muted small">${allApps.length} candidatura(s) em ${companies.length} empresa(s)</span>
+        <span class="muted small">${filteredApps.length} de ${allApps.length} candidatura(s) · ${companies.length} empresa(s)</span>
         <button class="btn primary" data-action="new-app">+ Nova candidatura</button>
       </div>
     </div>
 
     ${!allApps.length
       ? emptyState('🗂', 'Nenhuma candidatura cadastrada', 'Adicione vagas para ver os quadros organizados automaticamente por empresa.', '<button class="btn primary" data-action="new-app">Criar candidatura</button>')
-      : `
-        <!-- SEÇÃO KANBAN POR EMPRESA -->
+      : !filteredApps.length
+        ? emptyState('🔎', 'Nada encontrado com esse filtro', 'Ajuste a busca ou a etapa para ver suas candidaturas.', '<button class="btn" data-action="clear-apps-filter">Limpar filtros</button>')
+        : `
         <div style="margin-bottom: 34px;">
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px;">
             <h3 style="font-size: 15px; font-weight: 500; letter-spacing: 0.02em; color: var(--ink);">
-              Visão Kanban <span style="font-size: 13px; color: var(--muted-2); font-weight: 400;">(Quadros agrupados por empresa)</span>
+              Visão Kanban <span style="font-size: 13px; color: var(--muted-2); font-weight: 400;">(arraste um card para outra empresa para reatribuir)</span>
             </h3>
           </div>
 
@@ -62,7 +65,7 @@ export function render(root) {
             ${companies.map(company => {
               const cards = companyGroups[company];
               return `
-                <section class="kcol" style="min-width: 280px; max-width: 320px; flex: 1;" role="listitem">
+                <section class="kcol" data-company="${esc(company)}" style="min-width: 280px; max-width: 320px; flex: 1;" role="listitem" aria-label="${esc(company)}">
                   <header class="kcol-head" style="display: flex; align-items: center; justify-content: space-between;">
                     <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                       <span class="kdot" style="background: var(--accent);"></span>
@@ -71,12 +74,12 @@ export function render(root) {
                     <span class="kcount">${cards.length}</span>
                   </header>
 
-                  <div class="kcards" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+                  <div class="kcards" data-drop-company="${esc(company)}" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
                     ${cards.map(app => {
                       const stage = stageById(app.stage);
                       const done = app.steps.filter(s => s.status === 'done').length;
                       return `
-                        <article class="kcard" tabindex="0">
+                        <article class="kcard" tabindex="0" draggable="true" data-id="${app.id}">
                           <button class="kcard-body" data-action="open-app" data-id="${app.id}" style="text-align: left; width: 100%; border: none; background: transparent; cursor: pointer;">
                             <div class="kcard-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                               <span class="chip stage" style="--chip:${stage.color}; font-size: 10.5px;">${esc(stage.short)}</span>
@@ -96,7 +99,7 @@ export function render(root) {
                         </article>
                       `;
                     }).join('')}
-                    <button class="kadd" data-action="new-app" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px dashed var(--line); background: transparent; color: var(--muted-2); cursor: pointer; font-size: 12.5px;">+ nova vaga nesta empresa</button>
+                    <button class="kadd" data-action="new-app" data-company="${esc(company)}" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px dashed var(--line); background: transparent; color: var(--muted-2); cursor: pointer; font-size: 12.5px;">+ nova vaga nesta empresa</button>
                   </div>
                 </section>
               `;
@@ -104,7 +107,6 @@ export function render(root) {
           </div>
         </div>
 
-        <!-- SEÇÃO LISTA COMPLETA -->
         <div>
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px;">
             <h3 style="font-size: 15px; font-weight: 500; letter-spacing: 0.02em; color: var(--ink);">
@@ -118,14 +120,12 @@ export function render(root) {
             </tr></thead>
             <tbody>
               ${filteredApps.map(app => {
-                const done = app.steps.filter(s => s.status === 'done').length;
                 const stage = stageById(app.stage);
+                const done = app.steps.filter(s => s.status === 'done').length;
                 return `<tr>
-                  <td>
-                    <button class="cell-main" data-action="open-app" data-id="${app.id}">
-                      <strong>${esc(app.company)}</strong>
-                      <small class="muted">${esc(app.role || 'Função a definir')}</small>
-                    </button>
+                  <td class="cell-main">
+                    <div><b>${esc(app.company)}</b></div>
+                    <div class="muted small">${esc(app.role || 'Função a definir')}</div>
                   </td>
                   <td><span class="chip stage" style="--chip:${stage.color}">${esc(stage.short)}</span></td>
                   <td class="cell-action">${app.nextAction ? esc(app.nextAction) : '<span class="muted">— definir —</span>'}</td>
@@ -142,4 +142,55 @@ export function render(root) {
         </div>
       `}
   `;
+
+  root.querySelector('[data-action="clear-apps-filter"]')?.addEventListener('click', () => {
+    uiState.apps = { q: '', stage: '' };
+    render(root);
+  });
+
+  wireCompanyDrag(root);
+}
+
+/* arrastar card entre colunas de empresa = reatribuir empresa */
+function wireCompanyDrag(root) {
+  let draggingId = null;
+
+  root.querySelectorAll('.kcard[draggable]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      draggingId = el.dataset.id;
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggingId);
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      draggingId = null;
+      root.querySelectorAll('.kcol').forEach(c => c.classList.remove('dragover'));
+    });
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && e.target === el) location.hash = `#/apps/${el.dataset.id}`;
+    });
+  });
+
+  root.querySelectorAll('[data-drop-company]').forEach(zone => {
+    zone.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      zone.closest('.kcol')?.classList.add('dragover');
+    });
+    zone.addEventListener('dragleave', e => {
+      if (zone.contains(e.relatedTarget)) return;
+      zone.closest('.kcol')?.classList.remove('dragover');
+    });
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.closest('.kcol')?.classList.remove('dragover');
+      const id = draggingId || e.dataTransfer.getData('text/plain');
+      const company = zone.dataset.dropCompany;
+      if (!id || !company) return;
+      const app = getState().applications.find(a => a.id === id);
+      if (!app || app.company === company) return;
+      updateApplication(id, { company }, `Empresa alterada para ${company}`);
+    });
+  });
 }

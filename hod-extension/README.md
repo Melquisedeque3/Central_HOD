@@ -1,183 +1,226 @@
-# HOD — Central de Carreira
+# HOD — Central de Home Office
 
-Extensão Chrome (Manifest V3) para organizar candidaturas, processos, prazos e material de estudo em um só lugar. Sem build, sem dependências e sem backend próprio: os dados ficam na sua máquina e o **Obsidian** é o backend opcional do "segundo cérebro".
+Página local para organizar candidaturas, tarefas, rotina, guidelines e correspondências. A interface é o frontend; **Obsidian é a fonte de verdade**; o **Hermes Agent é o cérebro operacional**. O índice `.hod/index.json` é derivado e reconstruível.
 
-> Versão 2.0.0 · schema de dados 3 · interface em português.
-> A documentação da versão antiga (Google Sheets + Gemini) está preservada em [`legacy-v1/v1/README.md`](legacy-v1/v1/README.md).
+> HOD 4.0 · Node.js 20+ · sem dependências de runtime e sem etapa de build.
 
+## Arquitetura
+
+```text
+┌─────────────────────────┐       HTTP/SSE       ┌─────────────────────────┐
+│ Navegador                │ ──────────────────▶ │ HOD local :8420         │
+│ HTML/CSS/ES Modules      │ ◀────────────────── │ server.mjs (Node)       │
+└─────────────────────────┘                      └────────┬────────┬───────┘
+                                                          │        │
+                                      Markdown + índice    │        │ OpenAI API proxy
+                                                          ▼        ▼
+                                                 ┌────────────┐ ┌─────────────┐
+                                                 │ Vault       │ │ Hermes Agent│
+                                                 │ Obsidian    │ │ API :8642   │
+                                                 └────────────┘ └─────────────┘
+                                                      │
+                                               REST opcional
+                                                      ▼
+                                             Obsidian plugin :27123
+```
+
+Os registros editáveis são notas Markdown com YAML frontmatter. O servidor indexa as notas para montar o estado rápido da interface; a edição pelo HOD volta a gravar a nota. O plugin Obsidian Local REST API é opcional — o servidor HOD acessa o vault diretamente pelo sistema de arquivos. A integração REST existe para operações auxiliares e conexão/teste do plugin.
+
+As chaves do Hermes e da REST API do Obsidian ficam em `.hod-config.json` no servidor local, nunca no JavaScript do navegador. Não exponha o HOD à rede pública: o padrão é escutar somente em `127.0.0.1`.
+
+## Requisitos e início
+
+- Node.js 20 ou superior.
+- Um vault Obsidian existente ou diretório local gravável.
+- Hermes Agent é opcional para usar as áreas que não dependem do agente.
+
+```bash
+node --version
+node server.mjs --vault "/caminho/para/o/vault"
+```
+
+Abra <http://127.0.0.1:8420>. Ou use `npm start` (não há instalação de pacote). Para gerar dados de demonstração em um vault vazio: `npm run seed`. Para validar a API: `npm run smoke` com o servidor ativo. O seed não substitui dados existentes sem a opção `--force`.
+
+### Argumentos e variáveis
+
+| Opção | Variável | Padrão | Função |
+|---|---|---|---|
+| `--host` | `HOD_HOST` | `127.0.0.1` | Endereço de escuta; mantenha localhost salvo necessidade deliberada. |
+| `--port` | `HOD_PORT` | `8420` | Porta HTTP da página e API. |
+| `--vault` | `HOD_VAULT` | `./vault` | Diretório do vault Markdown. |
+| `--config` | `HOD_CONFIG` | `./.hod-config.json` | Caminho do arquivo local de configuração/segredos. |
+
+Argumentos têm precedência sobre variáveis de ambiente. Exemplo:
+
+```bash
+HOD_VAULT="$HOME/Documents/MeuVault" HOD_PORT=8420 node server.mjs
+```
+
+## Preparação do Hermes Agent
+
+No host onde o Hermes está instalado, configure o API Server OpenAI-compatible segundo a versão instalada do Hermes. No ambiente do Hermes, defina:
+
+```dotenv
+API_SERVER_ENABLED=true
+API_SERVER_PORT=8642
+API_SERVER_KEY=gere-uma-chave-longa-e-aleatoria
+# Se a versão exigir CORS para o cliente, permita apenas a origem local do HOD.
+API_SERVER_CORS_ORIGINS=http://127.0.0.1:8420
+```
+
+Reinicie o serviço e confirme que `http://127.0.0.1:8642/v1/models` responde quando enviado `Authorization: Bearer <API_SERVER_KEY>`. O HOD solicita modelos e conversa por `/v1/chat/completions`, com streaming SSE. O campo da chave é salvo pelo servidor; depois de salvar, a UI exibe apenas o indicador de chave configurada.
+
+Em **Ajustes → Hermes Agent**, preencha:
+
+- **URL:** `http://127.0.0.1:8642` (a URL pode também terminar em `/v1`);
+- **API key:** o valor de `API_SERVER_KEY`;
+- **Modelo:** um ID retornado por `/v1/models`;
+- **Dashboard:** opcional, normalmente `http://127.0.0.1:9119`.
+
+Use **Testar conexão** e **Listar modelos**. Se Hermes estiver desligado, a página continua operável; chat e ações do agente ficam desabilitados.
+
+### O que entregar ao agente Hermes
+
+A integração com o modelo é apenas o transporte de chat. Para o Hermes operar de fato o vault, instale/configure no host de integração as skills e ferramentas apropriadas, respeitando os contratos abaixo. Não disponibilize o caminho do vault nem credenciais ao navegador. A API local HOD permite que um agente autorizado leia o estado e faça CRUD:
+
+- `GET /api/state` — snapshot derivado do vault;
+- `POST /api/records` com `{ "type": "application|task|guideline|routine|settings", "data": { ... } }` — cria/atualiza nota;
+- `DELETE /api/records/:type/:id` — exclui, arquiva na lixeira e deixa tombstone;
+- `GET /api/note?path=...` e `PUT /api/note` com `{ "path": "...", "content": "..." }` — leitura/gravação Markdown;
+- `POST /api/reindex` — reconstrói o índice após alterações externas;
+- `GET /api/health` — diagnóstico de conectividade.
+
+Para escrita concorrente, preserve `id` estável e envie `updatedAt` atual quando fizer update. O servidor responde `409` com o estado atual quando detectar edição obsoleta. Exclusões criam tombstone para evitar ressurreição de dados e cópia em `.hod/trash/`. **Não escreva diretamente em `.hod/index.json`**: é cache derivado.
+
+Skills sugeridas para configurar no Hermes:
+
+1. `hod-vault-read`: carregar o estado, filtrar notas e consultar Markdown; nunca inventar campos.
+2. `hod-record-upsert`: propor ou executar CRUD via endpoints acima; confirmar ações destrutivas conforme a política do usuário.
+3. `hod-daily-briefing`: resumir tarefas, prazos e próximos passos a partir de `GET /api/state`.
+4. `hod-reindex`: após editar Markdown por fora da API, solicitar reindexação.
+
+Comece com execução supervisionada. Uma configuração de cron pode chamar um briefing diário, mas agende-a apenas depois de validar permissões, fuso horário, canal de entrega e formato com o usuário. O HOD não instala skills nem cria cron jobs automaticamente.
+
+## Preparação do Obsidian (opcional)
+
+Para usar o proxy Local REST API:
+
+1. Instale o plugin **Local REST API** no Obsidian e habilite-o.
+2. Copie a chave gerada pelo plugin e mantenha o servidor acessível em `127.0.0.1:27123` (padrão).
+3. Em **Ajustes → Obsidian Local REST API**, informe URL, chave e, opcionalmente, subpasta do vault.
+4. Clique em **Testar conexão**.
+
+A chave é guardada localmente pelo servidor e não é devolvida ao browser. O HOD usa acesso direto ao diretório do vault para os dados principais; a REST API não substitui essa configuração.
+
+## Voz
+
+A entrada de voz usa Web Speech API do navegador quando disponível. A leitura de respostas usa a síntese de voz do sistema (`speechSynthesis`); não requer chave ou serviço pago. Disponibilidade e vozes variam entre navegador e sistema operacional. Se não houver suporte, chat por texto continua disponível.
+
+## Vault e dados
+
+Na primeira inicialização, o HOD cria (se necessário) as pastas e metadados:
+
+```text
+Vault/
+├── Candidaturas/       # uma nota por processo
+├── Tarefas/            # uma nota por tarefa
+├── Guidelines/         # notas de estudo; corpo Markdown autoritativo
+├── Rotina/             # blocos de rotina
+├── .hod/
+│   ├── index.json      # índice derivado, reconstruível
+│   ├── tombstones.json # exclusões, evita ressurreição
+│   ├── bag.json        # e-mails, calendário e arquivos auxiliares
+│   └── trash/          # cópias de notas excluídas
+```
+
+O arquivo `.hod-config.json` fica no diretório do projeto por padrão, fora do vault; `HOD_CONFIG`/`--config` pode apontá-lo para outro local protegido.
+
+Exemplo abreviado de candidatura:
+
+```yaml
 ---
+id: app_abc123
+company: Exemplo
+role: Engenheira de Dados
+stage: entrevista
+priority: importante
+nextAction: Preparar conversa técnica
+deadline: 2026-12-01
+steps:
+  - id: step_1
+    title: Entrevista técnica
+    kind: Entrevista
+    status: todo
+hod_type: application
+created_at: 2026-11-10T10:00:00.000Z
+updated_at: 2026-11-10T10:00:00.000Z
+managed_by: hod
+---
+# Exemplo — Engenheira de Dados
+```
 
-## 1. O que já funciona (Fase 0 + 1)
+Tipos aceitos em `POST /api/records`: `application`, `task`, `guideline`, `routine`, `settings`. Cada nota tem `id` estável, `hod_type` e datas. Para guidelines, o corpo Markdown após o frontmatter é a fonte de verdade; os demais corpos derivados podem ser reconstituídos a partir dos campos estruturados.
 
-| Área | Recurso |
+### Concorrência e consistência
+
+- O servidor serializa gravações e grava notas de forma atômica.
+- Envie `updatedAt` para evitar sobrescrever edições recentes; trate `409` relendo o registro e conciliando a alteração.
+- Nunca recrie registro apagado sem intenção explícita: respeite os tombstones.
+- Edite as notas normalmente no Obsidian. Se alterações externas não aparecerem, use **Reindexar vault** ou `POST /api/reindex`.
+- `GET /api/state` é uma projeção do vault, não outra fonte de verdade.
+
+## Migração da extensão Chrome
+
+1. Faça backup/exporte os dados da extensão antes da migração.
+2. Inicie o HOD com o vault de destino correto.
+3. No HOD, use **Ajustes → Exportar JSON** na origem, se ainda puder abrir a extensão antiga; caso contrário, preserve o backup JSON existente.
+4. Importe o JSON pelo formulário **Importar JSON**. Os registros são mesclados por `id`; confira contagens, conteúdo de guidelines e rotinas no vault.
+5. Reindexe e valide o HOD antes de remover a extensão antiga. A importação não apaga as notas já existentes.
+
+Dados demonstrativos (`npm run seed`) não são sua migração e podem ser removidos manualmente do vault.
+
+## Operação e endpoints
+
+- `GET /api/health` — versão, vault e conectividade Hermes/Obsidian;
+- `GET /api/state` — estado completo derivado;
+- `POST /api/records`, `DELETE /api/records/:type/:id` — CRUD de notas;
+- `POST /api/bag` — atualiza listas de e-mail/calendário/Drive;
+- `GET|POST /api/config` — preferências; resposta pública inclui `hasKey`, não a chave;
+- `GET|PUT /api/note` — acesso Markdown controlado;
+- `GET|PUT|POST|DELETE /api/obsidian/*` — proxy REST autenticado pelo servidor;
+- `GET /api/hermes/models`, `POST /api/hermes/chat`, `POST /api/hermes/run` — proxy Hermes.
+
+Há também modo degradado de navegador/localStorage se o servidor estiver indisponível, mas para persistir notas no vault, usar Hermes e manter backup Markdown, abra sempre a página pelo servidor HOD.
+
+## Segurança e backup
+
+- `.hod-config.json`, `vault/` e `.hod/` estão no `.gitignore`; nunca commite vault pessoal nem chaves.
+- `.hod-config.example.json` é um modelo sem segredos.
+- O servidor escuta em loopback por padrão. Não mude para `0.0.0.0` sem adicionar autenticação e controles de rede.
+- Faça backup do vault inteiro (incluindo `.hod/` se desejar preservar lixeira e estado de indexação). O índice pode ser regenerado; tombstones e lixeira são úteis para recuperação.
+- A página não deve ser servida por hospedagem pública quando o HOD local usa permissões de escrita.
+
+## Solução de problemas
+
+| Sintoma | Verificação |
 |---|---|
-| **Início** | Faixa semanal com contagem por dia, palco do dia (foco + KPIs), próximos prazos, tarefas de hoje/atrasadas, processos sem próxima ação e captura rápida. |
-| **Pipeline** | Kanban com 7 etapas, arrastar e soltar entre colunas, filtros por texto/prioridade e histórico automático de mudança de etapa. |
-| **Processos** | Tabela de candidaturas + página de detalhe com etapas (certificação, prova, entrevista, follow-up…), tarefas ligadas, guidelines, notas em Markdown e linha do tempo. |
-| **Tarefas** | CRUD completo, agrupamento por atraso/prazo, prioridade, vínculo com candidatura e conclusão com um clique. |
-| **Estudo** | Biblioteca de guidelines por empresa/projeto, leitor Markdown, filtros, cópia do conteúdo e espaço para tradução PT-BR (fase de IA). |
-| **Ajustes** | Conexão com Obsidian (Local REST API), teste de conexão, envio de todas as notas, download `.md`, exportar/importar JSON e apagar tudo. |
-| **Dados** | `chrome.storage.local` como fonte principal, espelho em `localStorage`, migração automática da v1 e backup JSON. |
+| `node server.mjs` não inicia | Confirme Node 20+, permissão de escrita no vault e disponibilidade da porta 8420. Tente `--port 8421`. |
+| Página mostra modo local | Acesse via `http://127.0.0.1:8420`, confirme `/api/health` e recarregue. Abrir o HTML por `file://` não conecta ao servidor. |
+| Notas não aparecem | Confirme `--vault` aponta ao vault certo; clique em **Reindexar vault**. |
+| Hermes não conecta | Verifique que API Server está habilitado e escutando em 8642; valide URL, chave e `/v1/models`. A chave não deve ir no browser. |
+| Obsidian REST retorna 401 | Confira chave do plugin, URL, plugin ativo e teste primeiro em Ajustes. O HOD continua usando o filesystem mesmo se a REST opcional estiver desligada. |
+| Resposta do agente não conclui | Verifique logs do Hermes/API Server, limite/timeout e compatibilidade OpenAI de `/v1/chat/completions`. |
+| Edição retorna 409 | Recarregue o registro e reaplique a alteração em vez de reenviar estado antigo. |
+| Nota modificada externamente não atualiza | Execute reindexação. Não edite `.hod/index.json` manualmente. |
 
-Atalhos: `g h` início · `g p` pipeline · `g a` processos · `g t` tarefas · `g e` estudo · `g s` ajustes · `n` nova tarefa · `/` buscar.
+## Desenvolvimento
 
----
-
-## 2. Instalação
-
-1. Abra `chrome://extensions`.
-2. Ative o **Modo do desenvolvedor**.
-3. Clique em **Carregar sem compactação** e selecione esta pasta.
-4. Clique no ícone do HOD. O painel abre em uma aba inteira; clicar de novo foca a aba existente.
-
-Para editar o código e testar rápido, também é possível servir a pasta:
+Não há build nem dependências npm. Edite os arquivos e reinicie `node server.mjs` quando mudar código do servidor. Alterações front-end aparecem ao recarregar o navegador. Testes básicos:
 
 ```bash
-python3 -m http.server 8765
-# abra http://127.0.0.1:8765/
+npm run smoke
+# opcional: popular um vault de teste vazio
+npm run seed
 ```
 
-Fora da extensão o app usa `localStorage`; dentro dela, `chrome.storage.local` com espelho local.
-
----
-
-## 3. Arquitetura
-
-```
-hod-extension/
-├── manifest.json          # MV3: storage + host_permissions para 127.0.0.1/localhost
-├── background.js          # service worker: abre/foca o painel (ping entre abas)
-├── index.html             # shell: masthead, breadcrumb, #view, menu de borda, #modal-root
-├── style.css              # design system (dark teal, Rubik, menu de borda, transições, responsivo até 390px)
-├── fonts/                 # Rubik variável (subset latin), empacotada para uso offline
-├── js/
-│   ├── main.js            # rotas por hash, transições direcionais, render, atalhos e eventos
-│   ├── store.js           # modelo, normalização, migração, persistência e CRUD
-│   ├── state.js           # estado de UI (filtros por tela)
-│   ├── actions.js         # despacho de data-action
-│   ├── ui.js              # helpers de DOM, datas, modais, toast e Markdown seguro
-│   ├── components.js      # linhas de tarefa/etapa, chips, progresso
-│   ├── obsidian.js        # Local REST API + geração de notas Markdown
-│   └── views/             # home, pipeline, apps, appDetail, tasks, study, settings, modals
-├── scripts/
-│   ├── dev-check.mjs      # carrega o painel via CDP, semeia dados e tira screenshots
-│   ├── crud-check.mjs     # teste de fumaça do CRUD, persistência e exclusão em cascata
-│   └── debug.mjs          # inspeção auxiliar do painel
-├── legacy-v1/v1/          # versão anterior preservada (não é carregada)
-└── .tools/                # craft-anything + capturas usadas como referência de UX
-```
-
-Sem bundler, sem npm no runtime: módulos ES nativos carregados pelo navegador. O service worker não guarda estado de negócio.
-
-**Navegação:** o menu principal é o **edge menu** no canto inferior esquerdo — um botão-redondo que abre discos concêntricos (revelação em cascata) com os seis destinos rotulados sobre o arco: Início, Pipeline, Processos, Tarefas, Estudo e Ajustes. Funciona por clique, teclado (Tab/Escape) e fecha ao navegar; o masthead fixo concentra a marca, a trilha (HOD / página / item) e as ações rápidas.
-
-**Home editorial:** relógio grande, trilha dos sete dias com contagem de itens, bloco "próximo movimento" com os prazos à direita, indicadores em linha, atalhos ilustrados para as quatro áreas e prateleiras de tarefas. As rotas internas usam a View Transitions API para uma transição direcional curta (avançar/voltar), desativada com `prefers-reduced-motion`.
-
-### Modelo de dados
-
-```js
-{
-  version: 3,
-  applications: [{
-    id, company, role, stage, priority, nextAction, deadline, appliedAt,
-    link, location, compensation, tags[], notes,
-    steps: [{ id, title, kind, status, dueAt, notes }],
-    history: [{ at, text }], createdAt, updatedAt
-  }],
-  tasks: [{ id, title, notes, status, priority, dueAt, appId, completedAt }],
-  guidelines: [{ id, title, appId, sourceUrl, language, body, translation }],
-  settings: {
-    obsidian: { enabled, url, key, folder },
-    ai: { provider, model, apiKey },   // reservado para a fase 3
-    ui: { density }
-  }
-}
-```
-
-Regras: `application → steps → tasks`; excluir uma candidatura remove tarefas e guidelines ligadas; toda mudança de etapa gera evento no histórico; prazos aceitam `YYYY-MM-DD` (dia) ou `YYYY-MM-DDTHH:mm` (data e hora).
-
----
-
-## 4. Obsidian como backend
-
-O HOD conversa com o plugin **[Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api)** rodando no Obsidian:
-
-1. Instale e ative o plugin no vault.
-2. Copie a **API key** exibida pelo plugin.
-3. Em **Ajustes → Obsidian**, informe a URL (padrão `http://127.0.0.1:27123`), a chave e a pasta (padrão `HOD`).
-4. Use **Testar conexão** e **Enviar tudo para o vault**.
-
-Cada candidatura vira `HOD/Candidaturas/Empresa — Função.md`, com frontmatter (`hod`, `empresa`, `funcao`, `etapa`, `prioridade`, `prazo`) e seções de próxima ação, etapas, tarefas, guidelines e histórico. Um `HOD/HOD — Índice.md` lista tudo. Também é possível baixar um único `.md` com todas as notas.
-
-Observações:
-- O plugin usa certificado autoassinado por padrão; se optar por HTTPS local, o Chrome precisa confiar no certificado.
-- Não há sincronização bidirecional ainda: o HOD escreve no vault; leitura/merge entra na fase 4.
-
----
-
-## 5. Privacidade e segurança
-
-- Permissões: apenas `storage`; acesso de rede restrito a `127.0.0.1` e `localhost` (Obsidian).
-- Nenhuma telemetria, nenhum servidor intermediário e nenhuma chave de IA nesta fase.
-- Chaves e dados ficam em `chrome.storage.local` — **não** são sincronizados entre dispositivos.
-- O conteúdo é sempre escapado antes de entrar no HTML; o Markdown é renderizado por um subconjunto próprio, sem injetar HTML.
-- Backup recomendado antes de migrar de máquina: **Ajustes → Exportar JSON**.
-
----
-
-## 6. Verificação / desenvolvimento
-
-O harness usa o Chrome em modo debug e o servidor local:
-
-```bash
-# terminal 1
-python3 -m http.server 8765
-
-# terminal 2 (Chrome headless com CDP)
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --headless=new --remote-debugging-port=9222 --user-data-dir=/tmp/hod-chrome \
-  about:blank
-
-# terminal 3
-node scripts/dev-check.mjs      # screenshots em /tmp/hod-shots + erros de console
-node scripts/crud-check.mjs     # CRUD real: criar, editar, concluir, recarregar e excluir
-```
-
-O `dev-check.mjs` semeia cinco candidaturas, cinco tarefas e duas guidelines, percorre todas as telas e reporta exceções. O `crud-check.mjs` cria uma candidatura pela topbar, adiciona e conclui uma etapa, cria uma tarefa vinculada, recarrega para conferir a persistência e valida a exclusão em cascata — sem apagar os dados existentes.
-
----
-
-## 7. Roadmap
-
-| Fase | Escopo | Status |
-|---|---|---|
-| **0 — Fundação** | storage único, schema, migração v1, rotas, shell, backup | ✅ concluída |
-| **1 — Home + Pipeline + Processos** | CRUD real, kanban, etapas, tarefas, prazos, busca | ✅ concluída |
-| **2 — Estudo** | guidelines, leitor Markdown, vínculo com processos | ✅ concluída (tradução fica para a IA) |
-| **3 — IA BYOK** | chaves OpenRouter/Google AI/Groq/Nvidia, tradução PT-BR, resumos, digest de e-mails | 🔜 próxima |
-| **4 — Integrações** | Gmail, Calendar, Drive, leitura do vault Obsidian | ⏳ planejada |
-| **5 — Polimento** | testes automatizados, acessibilidade, importação assistida | ⏳ planejada |
-
-### Fase 3 — decisões de projeto
-
-- Chaves em `chrome.storage.local`, nunca em URL, log ou `sync`; campo mascarado e opção de apagar.
-- Camada única `ai.js` com adaptadores por provedor e fallback entre modelos.
-- Toda escrita sugerida pela IA passa por aprovação (human-in-the-loop); a IA lê e propõe, não altera o estado sozinha.
-- Tradução de guidelines grava em `translation`, preservando o original.
-
-### Fase 4 — atritos conhecidos
-
-- Gmail/Calendar/Drive exigem OAuth; uso pessoal funciona em modo de teste, distribuição exige verificação e provavelmente backend.
-- Obsidian não expõe o vault à extensão; o caminho suportado é o Local REST API ou import/export `.md`.
-- Busca de vagas via APIs/feeds é viável; scraping de LinkedIn e similares viola os termos de uso e não será implementado.
-
----
-
-## 8. Referências de produto
-
-- **EasyMachineAI HQ** (`hq.easymachineai.com`) — referência de fluxo, densidade e estética "HQ".
-- **craft-anything** (`github.com/storytold/craft-anything`) — usado para mapear telas, estados e padrões de interação da referência. Nenhum código ou ativo proprietário foi copiado; a implementação é original e adaptada ao domínio de carreira.
-
----
-
-*Última atualização: novembro/2026.*
+A interface mantém o desenho atual; esta migração substitui principalmente armazenamento, rotas de integração e operacionalização local.

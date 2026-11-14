@@ -7,6 +7,7 @@ export const uiState = {
   tasks: { q: '', status: 'open', priority: '', app: '' },
   apps: { q: '', stage: '' },
   study: { q: '', app: '' },
+  ai: { tab: 'chat' },
 };
 
 export function getFilter(path) {

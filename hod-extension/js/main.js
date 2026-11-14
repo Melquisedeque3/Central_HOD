@@ -1,14 +1,19 @@
 /* ============================================================
    main.js — shell, rotas, atalhos e ciclo de render
+
+   Deixou de ser um painel de extensão: não há service worker,
+   não há mensagens para background, e a rota /pipeline (que
+   duplicava /apps) foi removida. O estado vem do vault pelo
+   servidor local, com espelho em localStorage.
    ============================================================ */
 import { $, $$, toast, esc } from './ui.js';
-import { getState, load, subscribe } from './store.js';
+import { getState, load, subscribe, reload, flush } from './store.js';
 import { dispatch } from './actions.js';
 import { setFilter } from './state.js';
 import { openAppModal } from './views/modals.js';
+import * as api from './api.js';
 
 import * as home from './views/home.js';
-import * as pipeline from './views/pipeline.js';
 import * as apps from './views/apps.js';
 import * as appDetail from './views/appDetail.js';
 import * as tasks from './views/tasks.js';
@@ -31,7 +36,8 @@ const ROUTES = [
   { pattern: /^\/metrics$/, view: metrics, name: 'metrics' },
   { pattern: /^\/ai$/, view: ai, name: 'ai' },
   { pattern: /^\/settings$/, view: settings, name: 'settings' },
-  { pattern: /^\/pipeline$/, view: pipeline, name: 'pipeline' },
+  /* rota antiga: redireciona para candidaturas */
+  { pattern: /^\/pipeline$/, view: apps, name: 'apps' },
 ];
 
 const ROUTE_ORDER = ['home', 'apps', 'tasks', 'email', 'study', 'routine', 'metrics', 'ai', 'settings'];
@@ -39,13 +45,12 @@ const PAGE_LABEL = {
   home: 'Início',
   apps: 'Candidaturas',
   tasks: 'Tarefas',
-  email: 'Email',
+  email: 'Correspondências',
   study: 'Aprendizagem',
   routine: 'Rotina',
   metrics: 'Métricas',
-  ai: 'Central IA',
-  settings: 'Configurações',
-  pipeline: 'Pipeline'
+  ai: 'Agente',
+  settings: 'Ajustes',
 };
 
 const viewEl = $('#view');
@@ -82,11 +87,7 @@ function updateBreadcrumb(meta) {
   const isDetail = current.name === 'apps' && !!current.params.id;
 
   if (isDetail) {
-    if (parent) {
-      parent.hidden = false;
-      parent.textContent = 'Processos';
-      parent.dataset.nav = 'apps';
-    }
+    if (parent) { parent.hidden = false; parent.textContent = 'Processos'; parent.dataset.nav = 'apps'; }
     if (sep) sep.hidden = false;
     if (sep2) sep2.hidden = false;
     if (crumb) crumb.textContent = viewBody.dataset.crumb || 'Processo';
@@ -137,6 +138,7 @@ function render({ focus } = {}) {
   updateBreadcrumb(meta);
   activeNav(current.name);
   updateBadges();
+  updateVaultPill();
   restoreFocus(focusSnapshot);
   lastRenderedAt = Date.now();
 }
@@ -172,8 +174,6 @@ function applyRoute(next) {
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
-let activeTransition = null;
-
 function navigate() {
   const next = parseHash();
   const same = next.name === current.name
@@ -196,21 +196,31 @@ function navigate() {
   const from = ROUTE_ORDER.indexOf(current.name);
   const to = ROUTE_ORDER.indexOf(next.name);
   const dir = to >= from ? 'forward' : 'back';
-  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-  if (document.startViewTransition && !reduced && !activeTransition) {
-    document.documentElement.dataset.hqRouteDir = dir;
-    document.documentElement.classList.add('hq-route-transition');
-    const transition = document.startViewTransition(() => applyRoute(next));
-    activeTransition = transition;
-    transition.ready.catch(() => {});
-    transition.finished.catch(() => {}).finally(() => {
-      activeTransition = null;
-      document.documentElement.classList.remove('hq-route-transition');
-    });
-  } else {
-    applyRoute(next);
-  }
+  // A troca de tela acontece SEMPRE de forma síncrona. A animação é
+  // aplicada depois, como classe CSS: assim nenhum recurso opcional do
+  // navegador (View Transitions, aba em segundo plano, animação abortada)
+  // pode impedir a rota de mudar.
+  applyRoute(next);
+  animateRoute(dir);
+}
+
+const SLIDE_ROUTES = new Set(['apps', 'tasks', 'study', 'settings']);
+
+function animateRoute(dir) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const el = viewEl;
+  if (!el) return;
+  el.classList.remove('route-in-forward', 'route-in-back', 'route-in-fade');
+  // reinicia a animação no mesmo frame
+  void el.offsetWidth;
+  const kind = SLIDE_ROUTES.has(current.name) && !current.params.id
+    ? `route-in-${dir}`
+    : 'route-in-fade';
+  el.classList.add(kind);
+  const clear = () => el.classList.remove('route-in-forward', 'route-in-back', 'route-in-fade');
+  el.addEventListener('animationend', clear, { once: true });
+  setTimeout(clear, 400);
 }
 
 /* ============================================================
@@ -301,7 +311,7 @@ dockCore?.addEventListener('keydown', e => {
   }
 });
 
-/* atalho numérico 1–6: pisca o tile e navega */
+/* atalho numérico 1–9: pisca o tile e navega */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && (dockBackBtn?.matches(':focus-visible') || dockForwardBtn?.matches(':focus-visible'))) return;
   if (e.target.matches('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -347,7 +357,7 @@ function hqDockRelax(e) {
 dock?.addEventListener('pointermove', hqDockMagnify);
 dock?.addEventListener('pointerleave', hqDockRelax);
 
-/* badge de contagem (ex.: tarefas atrasadas / de hoje) */
+/* badge de contagem (tarefas atrasadas / de hoje) */
 function setBadge(routeName, count) {
   const tile = dockCore?.querySelector(`.dock-app[data-route="${routeName}"]`);
   if (!tile) return;
@@ -366,7 +376,54 @@ function updateBadges() {
     const today = new Date().toISOString().slice(0, 10);
     const due = (st.tasks || []).filter(t => t.status !== 'done' && t.dueAt && t.dueAt.slice(0, 10) <= today).length;
     setBadge('tasks', due);
+
+    const appsTile = dockCore?.querySelector('.dock-app[data-route="apps"] .dock-badge-num');
+    if (appsTile) {
+      const active = (st.applications || []).filter(a => a.stage !== 'encerrada').length;
+      appsTile.textContent = active > 99 ? '99+' : String(active);
+      appsTile.hidden = active === 0;
+    }
   } catch { /* estado ainda não carregado */ }
+}
+
+/* ---------- pílula de status do vault no masthead ---------- */
+function updateVaultPill() {
+  const pill = $('#vault-pill');
+  if (!pill) return;
+  const st = getState();
+  const vault = st.sync.mode === 'vault';
+  const hermes = !!st.connections?.hermes?.enabled;
+  pill.dataset.mode = vault ? 'vault' : 'local';
+  pill.hidden = false;
+  pill.innerHTML = `
+    <span class="dot" aria-hidden="true"></span>
+    <span>${vault ? 'vault' : 'local'}</span>
+    ${hermes ? '<span class="sep" aria-hidden="true">·</span><span>hermes</span>' : ''}
+  `;
+  pill.title = vault
+    ? `Obsidian: ${st.vault?.root || 'conectado'} — ${st.vault?.notes ?? 0} nota(s)${st.sync.pending ? `, ${st.sync.pending} gravação(ões) pendente(s)` : ''}`
+    : 'Sem servidor local: os dados ficam neste navegador. Rode `node server.mjs`.';
+}
+
+/* ---------- sincronizar com o vault ---------- */
+async function syncFromVault() {
+  const st = getState();
+  if (st.sync.mode !== 'vault') {
+    toast('Sem servidor local. Rode `node server.mjs` para sincronizar.', 'error');
+    return;
+  }
+  const btn = $('#sync-vault');
+  btn?.classList.add('is-spinning');
+  try {
+    await api.reindex();
+    await reload();
+    render();
+    toast('Sincronizado com o vault');
+  } catch (err) {
+    toast(`Falha ao sincronizar: ${err.message}`, 'error');
+  } finally {
+    btn?.classList.remove('is-spinning');
+  }
 }
 
 /* ---------- eventos globais ---------- */
@@ -430,20 +487,23 @@ function tick() {
 }
 
 async function boot() {
+  $('#sync-vault')?.addEventListener('click', syncFromVault);
+
   await load();
   tick();
   setInterval(tick, 30000);
   navigate();
   requestAnimationFrame(() => { updateGlide(); updateCues(); updateHistoryButtons(); });
-  if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-    try { chrome.runtime.sendMessage({ type: 'hod:panel-ready' }); } catch { /* sem service worker */ }
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (message?.type === 'hod:ping') { sendResponse({ ok: true }); return true; }
-      return false;
-    });
-  }
-  window.addEventListener('beforeunload', () => { import('./store.js').then(m => m.flush()); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) import('./store.js').then(m => m.flush()); });
+
+  /* grava o espelho local ao sair ou trocar de aba */
+  window.addEventListener('beforeunload', () => { flush(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
+
+  /* aviso quando há gravações pendentes há muito tempo */
+  setInterval(() => {
+    const st = getState();
+    if (st.sync.mode === 'vault' && st.sync.pending > 0) updateVaultPill();
+  }, 4000);
 }
 
 boot();

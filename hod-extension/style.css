@@ -810,6 +810,12 @@ html[data-hq-page="settings"] main#view { view-transition-name: workspace-hero; 
 html.hq-route-transition[data-hq-route-dir="forward"]::view-transition-new(workspace-hero) { animation: hq-vt-in-forward .26s linear both !important; }
 html.hq-route-transition[data-hq-route-dir="back"]::view-transition-new(workspace-hero) { animation: hq-vt-in-back .26s linear both !important; }
 
+/* A entrada de rota é feita por classe, não pela View Transitions API:
+   o mesmo desenho, sem depender de um recurso que pode não disparar. */
+#view.route-in-forward { animation: hq-vt-in-forward .26s linear both; }
+#view.route-in-back { animation: hq-vt-in-back .26s linear both; }
+#view.route-in-fade { animation: hq-vt-in .2s linear both; }
+
 @keyframes hq-vt-out { to { opacity: 0; } }
 @keyframes hq-vt-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes hq-vt-in-forward { from { opacity: 0; transform: translateX(26px); } to { opacity: 1; transform: none; } }
@@ -1418,3 +1424,152 @@ html.hq-route-transition[data-hq-route-dir="back"]::view-transition-new(workspac
   font-size: 12.5px !important;
   color: var(--muted-2) !important;
 }
+
+/* ============================================================
+   HOD 4.0 — complementos da página local
+   Só classes que o markup novo usa e que não existiam antes.
+   Nenhuma regra acima foi alterada.
+   ============================================================ */
+
+/* ---------- pílula de armazenamento no masthead ---------- */
+.vault-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 30px; padding: 0 12px; border-radius: 99px;
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, .05);
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted);
+}
+.vault-pill .dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--muted-2);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, .06);
+}
+.vault-pill[data-mode="vault"] .dot { background: var(--green); box-shadow: 0 0 0 3px rgba(126, 200, 164, .18); }
+.vault-pill[data-mode="vault"] { color: var(--ink); }
+.vault-pill .sep { opacity: .45; }
+.vault-pill[hidden] { display: none; }
+
+.btn-top-icon.is-spinning svg { animation: hod-spin .9s linear infinite; }
+@keyframes hod-spin { to { transform: rotate(360deg); } }
+
+/* ---------- checkbox de tarefa (kanban) ---------- */
+.task-check {
+  display: inline-grid; place-items: center;
+  width: 18px; height: 18px; padding: 0; flex: none;
+  background: none; border: 0;
+}
+.task-check .box {
+  width: 15px; height: 15px; border-radius: 4px;
+  border: 1.5px solid var(--line-strong);
+  background: rgba(255, 255, 255, .04);
+  transition: border-color .15s, background .15s;
+  display: block;
+}
+.task-check:hover .box { border-color: var(--accent); }
+.task-check[aria-pressed="true"] .box,
+.task-check.on .box {
+  background: var(--green); border-color: var(--green);
+  position: relative;
+}
+.task-check[aria-pressed="true"] .box::after,
+.task-check.on .box::after {
+  content: '✓'; position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 10px; color: #0b2318; font-weight: 700;
+}
+
+/* ---------- rotina ---------- */
+.routine-timeline { position: relative; }
+.routine-block { transition: border-color .2s, background .2s, transform .2s var(--ease); }
+.routine-block:hover { border-color: var(--line-strong); }
+.routine-block.is-now {
+  position: relative;
+  box-shadow: 0 0 0 1px rgba(241, 188, 144, .18), 0 14px 34px rgba(0, 6, 9, .3);
+}
+.routine-block.is-now::before {
+  content: ''; position: absolute; left: -1px; top: 12px; bottom: 12px;
+  width: 3px; border-radius: 99px; background: var(--accent);
+}
+
+/* ---------- estudo ---------- */
+.guide-reader { display: flex; flex-direction: column; gap: 14px; }
+.guide-reader .md-body {
+  font-size: 14px; line-height: 1.7; color: var(--muted);
+  max-height: 62vh; overflow: auto;
+}
+
+/* ---------- agente ---------- */
+.hermes-orb {
+  display: inline-grid; place-items: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, rgba(241, 188, 144, .5), rgba(126, 203, 219, .18) 58%, transparent 72%);
+  border: 1px solid var(--line-strong);
+  color: var(--accent-strong);
+  line-height: 1;
+}
+.hermes-orb.is-thinking { animation: hod-pulse 1.6s ease-in-out infinite; }
+@keyframes hod-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(241, 188, 144, .28); }
+  50% { box-shadow: 0 0 0 8px rgba(241, 188, 144, 0); }
+}
+
+.dock-tab {
+  padding: 7px 14px; border-radius: 9px;
+  font-size: 12.5px; color: var(--muted-2);
+  border: 1px solid transparent;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.dock-tab:hover { color: var(--ink); background: rgba(255, 255, 255, .05); }
+.dock-tab.is-active {
+  color: var(--ink); background: rgba(255, 255, 255, .08);
+  border-color: var(--line-strong);
+}
+
+#aiMic.is-listening {
+  color: #fca5a5; border-color: rgba(239, 140, 140, .5);
+  background: rgba(239, 140, 140, .12);
+  animation: hod-listen 1.2s ease-in-out infinite;
+}
+@keyframes hod-listen {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 140, 140, .3); }
+  50% { box-shadow: 0 0 0 7px rgba(239, 140, 140, 0); }
+}
+
+.agent-busy {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; color: var(--muted-2);
+}
+.agent-busy::before {
+  content: ''; width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid rgba(241, 188, 144, .25);
+  border-top-color: var(--accent);
+  animation: hod-spin .8s linear infinite;
+}
+
+/* ---------- blocos de código (markdown do agente e ajuda) ---------- */
+.md-pre {
+  margin: 10px 0 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, .35);
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.md-pre code {
+  background: none; border: 0; padding: 0;
+  color: var(--muted); white-space: pre;
+}
+
+/* ---------- lista de tarefas agrupada ---------- */
+.tgroup.late { border-left: 2px solid rgba(239, 140, 140, .5); }
+.tgroup.muted-group { opacity: .72; }
+
+/* ---------- cards de contexto do agente ---------- */
+.card[data-agent-action] { text-align: left; cursor: pointer; }
+.card[data-agent-action]:disabled { opacity: .5; cursor: not-allowed; }
+.card[data-agent-action]:not(:disabled):hover { border-color: var(--accent); }
+
+/* ---------- etapa desabilitada / vazio compacto ---------- */
+.facts.compact { gap: 6px; }

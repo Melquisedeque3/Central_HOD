@@ -20,13 +20,14 @@ const appOptions = (selected = '') => [
 /* ---------- tarefa ---------- */
 export function openTaskModal(id = '', preset = {}) {
   const task = id ? getTask(id) : null;
+  const initialPriority = task?.priority || preset.priority || 'normal';
   openModal({
     title: task ? 'Editar tarefa' : 'Nova tarefa',
     body: `
       ${field('Tarefa', 'title', task?.title || preset.title || '', { required: true, placeholder: 'O que precisa ser feito?' })}
       <div class="grid-2">
         ${field('Prazo e hora', 'dueAt', toDateTimeInput(task?.dueAt || preset.dueAt || ''), { type: 'datetime-local' })}
-        ${select('Prioridade', 'priority', PRIORITIES.map(p => ({ value: p.id, label: p.name })), task?.priority || 'normal')}
+        ${select('Prioridade', 'priority', PRIORITIES.map(p => ({ value: p.id, label: p.name })), initialPriority)}
       </div>
       ${select('Candidatura relacionada', 'appId', appOptions(task?.appId || preset.appId || ''))}
       ${textarea('Notas', 'notes', task?.notes || '', { rows: 3, placeholder: 'Contexto, links, detalhes…' })}

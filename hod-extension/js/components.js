@@ -90,7 +90,7 @@ export function stageSummary(apps, currentStage) {
   return `<div class="stage-summary">
     ${['mapeada', 'aplicada', 'teste', 'entrevista', 'proposta', 'ativa'].map(id => {
       const stage = stageById(id);
-      return `<a class="stage-pill ${currentStage === id ? 'active' : ''}" href="#/pipeline">
+      return `<a class="stage-pill ${currentStage === id ? 'active' : ''}" href="#/apps?stage=${id}">
         <i style="--c:${stage.color}"></i>${esc(stage.short)}<b>${counts[id]}</b>
       </a>`;
     }).join('')}

@@ -1,24 +1,17 @@
 /* ============================================================
    views/home.js — Home com Carrossel Central (Theatre Cards)
-   100% fiel ao EasyMachineAI HQ com wallpapers temáticos reais
+   Os cards agora são DERIVADOS do estado real: candidaturas,
+   tarefas, rotina, guidelines e conexões. Nenhum texto fictício.
    ============================================================ */
-import { esc, toDateInput, parseDate } from '../ui.js';
-import { getState, stats } from '../store.js';
+import { esc, toDateInput, dueInfo, relativeTime } from '../ui.js';
+import { getState, stats, stageById } from '../store.js';
 
 export const meta = { kicker: 'Home', title: 'Home' };
 
-function dayKey(offset = 0) {
-  const d = new Date();
-  d.setHours(12, 0, 0, 0);
-  d.setDate(d.getDate() + offset);
-  return toDateInput(d);
-}
-
 function getWeekDays() {
   const hoje = new Date();
-  const diasSem = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const diasSem = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   const dias = [];
-  // Gera -2 até +4 em relação ao dia de hoje
   for (let i = -2; i <= 4; i++) {
     const d = new Date(hoje);
     d.setDate(hoje.getDate() + i);
@@ -32,77 +25,151 @@ function getWeekDays() {
   return dias;
 }
 
-// Cards da esteira do Carrossel Central (Theatre Cards)
-const THEATRE_CARDS = [
-  {
-    id: 'northstar',
-    category: 'Projeto · Seu Espaço',
-    title: 'Northstar walkthrough is the launch dependency',
-    desc: 'Alinhar as diretrizes de qualificação e testes para os projetos ativos no pipeline.',
-    bg: 'theme-1/feed.webp',
-    actionText: 'Abrir projeto',
-    nav: 'pipeline',
-    time: 'Hoje · 14h',
-  },
-  {
-    id: 'handoffs',
-    category: 'Processo · Candidatura',
-    title: 'The hidden cost of unclear handoffs',
-    desc: 'Revisar retornos de e-mail e status de qualificação nas empresas prioritárias.',
-    bg: 'theme-1/today.webp',
-    actionText: 'Ver processos',
-    nav: 'apps',
-    time: 'Nov 9',
-  },
-  {
-    id: 'review',
-    category: 'Auditoria · Tarefas',
-    title: 'Weekly cadence review & pipeline status',
-    desc: '3 ações pendentes exigem atenção para desbloquear próximas etapas.',
+/* ---------- construção dos cards a partir do estado ---------- */
+function buildCards(state) {
+  const cards = [];
+  const apps = state.applications || [];
+  const tasks = state.tasks || [];
+
+  /* 1. candidatura mais urgente (prazo mais próximo entre as ativas) */
+  const active = apps
+    .filter(a => a.stage !== 'encerrada')
+    .sort((a, b) => {
+      const da = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+      const db = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+      return da - db;
+    });
+  const focus = active[0];
+  if (focus) {
+    const info = dueInfo(focus.deadline);
+    cards.push({
+      id: 'focus-app',
+      category: `Processo · ${stageById(focus.stage).name}`,
+      title: `${focus.company}${focus.role ? ' — ' + focus.role : ''}`,
+      desc: focus.nextAction || 'Defina a próxima ação desta candidatura para não perder o ritmo.',
+      bg: 'theme-1/feed.webp',
+      actionText: 'Abrir processo',
+      nav: `apps/${focus.id}`,
+      time: info ? info.text : 'sem prazo',
+    });
+  }
+
+  /* 2. tarefa mais urgente em aberto */
+  const openTasks = tasks.filter(t => t.status !== 'done');
+  const urgentTask = [...openTasks].sort((a, b) => {
+    const pa = ['urgente', 'importante', 'normal', 'baixa'].indexOf(a.priority);
+    const pb = ['urgente', 'importante', 'normal', 'baixa'].indexOf(b.priority);
+    if (pa !== pb) return pa - pb;
+    const da = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
+    const db = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
+    return da - db;
+  })[0];
+  if (urgentTask) {
+    const info = dueInfo(urgentTask.dueAt);
+    cards.push({
+      id: 'urgent-task',
+      category: `Prioridade · ${urgentTask.priority}`,
+      title: urgentTask.title,
+      desc: urgentTask.notes || urgentTask.appLabel || 'Tarefa aberta na sua lista — abra para editar ou concluir.',
+      bg: 'theme-1/today.webp',
+      actionText: 'Ver tarefas',
+      nav: 'tasks',
+      time: info ? info.text : 'sem prazo',
+    });
+  }
+
+  /* 3. pipeline consolidado */
+  const byStage = {};
+  for (const a of apps) byStage[a.stage] = (byStage[a.stage] || 0) + 1;
+  cards.push({
+    id: 'pipeline',
+    category: 'Pipeline · Funil',
+    title: apps.length
+      ? `${apps.length} candidatura(s) em ${Object.keys(byStage).length} etapa(s)`
+      : 'Comece mapeando suas candidaturas',
+    desc: apps.length
+      ? `Teste: ${byStage.teste || 0} · Entrevista: ${byStage.entrevista || 0} · Proposta: ${byStage.proposta || 0} · Ativa: ${byStage.ativa || 0}`
+      : 'Cadastre a primeira vaga para o funil começar a acompanhar prazos e etapas.',
     bg: 'theme-1/projects.webp',
-    actionText: 'Ver tarefas',
-    nav: 'tasks',
-    time: 'Urgente',
-  },
-  {
-    id: 'metrics',
-    category: 'Desempenho · Métricas',
-    title: 'Candidate pipeline conversion rate',
-    desc: 'Acompanhar a evolução das candidaturas até a etapa de contratação ativa.',
-    bg: 'theme-1/metrics.webp',
-    actionText: 'Ver métricas',
+    actionText: 'Abrir pipeline',
     nav: 'pipeline',
-    time: 'Semanal',
-  },
-  {
-    id: 'workflows',
-    category: 'Automações · Rotina',
-    title: 'Daily scheduled sync & job radar',
-    desc: 'Rotina diária de checagem de vagas, testes e alertas ativados.',
+    time: `${openTasks.length} tarefa(s) aberta(s)`,
+  });
+
+  /* 4. rotina do dia */
+  const slots = state.routine || [];
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const toMin = hhmm => {
+    const [h, m] = String(hhmm || '0:0').split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  const current = slots.find(s => nowMin >= toMin(s.start) && nowMin < toMin(s.end));
+  const nextSlot = slots.find(s => toMin(s.start) > nowMin);
+  cards.push({
+    id: 'routine',
+    category: 'Rotina · Bloco atual',
+    title: current ? current.label : nextSlot ? `Próximo: ${nextSlot.label}` : 'Rotina do dia concluída',
+    desc: current
+      ? `Bloco ${current.start} — ${current.end} em andamento.`
+      : nextSlot
+        ? `Começa às ${nextSlot.start}.`
+        : `${slots.length} bloco(s) configurado(s) para a rotina.`,
     bg: 'theme-1/workflows.webp',
     actionText: 'Ver rotina',
-    nav: 'study',
-    time: '1 agendada',
-  }
-];
+    nav: 'routine',
+    time: current ? `${current.start} — ${current.end}` : nextSlot ? `às ${nextSlot.start}` : 'livre',
+  });
 
-let activeCardIndex = 0;
+  /* 5. biblioteca de guidelines */
+  const guides = state.guidelines || [];
+  cards.push({
+    id: 'guides',
+    category: 'Estudo · Biblioteca',
+    title: guides.length ? `${guides.length} guideline(s) no vault` : 'Nenhuma guideline ainda',
+    desc: guides.length
+      ? `Última: ${guides[0].title}${guides[0].updatedAt ? ` · ${relativeTime(guides[0].updatedAt)}` : ''}`
+      : 'Cole as orientações das empresas para estudar e pedir tradução ao agente.',
+    bg: 'theme-1/content.webp',
+    actionText: 'Abrir estudo',
+    nav: 'study',
+    time: guides.length ? `${guides.length} nota(s)` : 'vazio',
+  });
+
+  /* 6. métricas */
+  const doneTasks = tasks.filter(t => t.status === 'done').length;
+  cards.push({
+    id: 'metrics',
+    category: 'Desempenho · Métricas',
+    title: 'Conversão e ritmo do seu funil',
+    desc: `${doneTasks} tarefa(s) concluída(s) · ${apps.length} candidatura(s) · ${state.emails.length} e-mail(s) analisado(s).`,
+    bg: 'theme-1/metrics.webp',
+    actionText: 'Ver métricas',
+    nav: 'metrics',
+    time: 'tempo real',
+  });
+
+  return cards;
+}
 
 export function render(root) {
   const state = getState();
   const s = stats();
   const week = getWeekDays();
-  const currentCard = THEATRE_CARDS[activeCardIndex];
+  const cards = buildCards(state);
 
-  // Identifica cards vizinhos para renderizar na lateral da esteira 3D
-  const prevIndex = (activeCardIndex - 1 + THEATRE_CARDS.length) % THEATRE_CARDS.length;
-  const nextIndex = (activeCardIndex + 1) % THEATRE_CARDS.length;
-  const prevCard = THEATRE_CARDS[prevIndex];
-  const nextCard = THEATRE_CARDS[nextIndex];
+  const activeCardIndex = Math.min(render.index || 0, cards.length - 1);
+  render.index = activeCardIndex;
+
+  const currentCard = cards[activeCardIndex];
+  const prevCard = cards[(activeCardIndex - 1 + cards.length) % cards.length];
+  const nextCard = cards[(activeCardIndex + 1) % cards.length];
+
+  const overdue = state.tasks.filter(t => t.status !== 'done' && t.dueAt && new Date(t.dueAt) < new Date()).length;
+  const vaultNote = state.vault?.notes ?? 0;
+  const modeLabel = state.sync.mode === 'vault' ? 'Vault' : 'Local';
 
   root.innerHTML = `
     <div class="home-os-stage">
-      <!-- CALENDAR STRIP NO ESTILO PÍLULA CINZA ESCURO DA REFERÊNCIA -->
       <section class="home-top-bar">
         <div class="calendar-capsule">
           ${week.map(d => `
@@ -115,70 +182,58 @@ export function render(root) {
         </div>
 
         <div class="quick-status-capsule">
-          <div class="status-item" data-nav="apps" title="Ações que precisam da sua atenção">
-            <span class="status-icon">✉</span>
+          <div class="status-item" data-nav="tasks" title="Tarefas abertas e atrasadas">
+            <span class="status-icon">${overdue ? '⚠' : '✓'}</span>
             <div>
-              <strong>Needs you</strong>
-              <small>${s.openTasks || 3} items</small>
+              <strong>${overdue ? 'Atrasadas' : 'Em dia'}</strong>
+              <small>${s.openTasks} abertas${overdue ? ` · ${overdue} atrasada(s)` : ''}</small>
             </div>
           </div>
           <div class="status-divider"></div>
-          <div class="status-item" data-nav="study" title="Rotinas e automações agendadas">
-            <span class="status-icon">▷</span>
+          <div class="status-item" data-nav="settings" title="Modo de armazenamento">
+            <span class="status-icon">${state.sync.mode === 'vault' ? '🗄' : '💾'}</span>
             <div>
-              <strong>Automations</strong>
-              <small>1 scheduled</small>
+              <strong>${modeLabel}</strong>
+              <small>${state.sync.mode === 'vault' ? `${vaultNote} nota(s)` : 'só neste navegador'}</small>
             </div>
           </div>
         </div>
 
-        <button class="feed-toggle-btn" title="Feed ligado">
-          <span>📰</span> Feed on
+        <button class="feed-toggle-btn" data-nav="ai" title="Abrir o agente Hermes">
+          <span>✨</span> Agente
         </button>
       </section>
 
-      <!-- CARROSSEL CENTRAL THEATRE CARDS COM WALLPAPERS REAIS -->
       <section class="workspace-theatre" id="workspaceTheatre">
-        <!-- Seta Anterior -->
-        <button class="theatre-arrow theatre-arrow-prev" id="theatrePrev" aria-label="Card anterior">
-          ‹
-        </button>
+        <button class="theatre-arrow theatre-arrow-prev" data-card="prev" aria-label="Card anterior">‹</button>
 
-        <!-- Trilha 3D de Cards -->
         <div class="theatre-rail">
-          <!-- Card Lateral Esquerdo -->
-          <article class="theatre-card slot-n1" style="background-image: url('${prevCard.bg}');">
+          <article class="theatre-card slot-n1" data-card="prev" style="background-image: url('${prevCard.bg}');">
             <div class="card-overlay">
               <span class="card-kicker">${esc(prevCard.category)}</span>
               <h3>${esc(prevCard.title)}</h3>
             </div>
           </article>
 
-          <!-- Card Central Ativo (Hero) -->
           <article class="theatre-card is-active" aria-current="true" style="background-image: url('${currentCard.bg}');">
             <div class="card-backdrop-gradient"></div>
             <div class="feed-cover-content">
               <div class="feed-top-row">
                 <span class="feed-mark">HOD / FEED</span>
-                <span class="feed-counter">0${activeCardIndex + 1} / 0${THEATRE_CARDS.length}</span>
+                <span class="feed-counter">0${activeCardIndex + 1} / 0${cards.length}</span>
               </div>
-              <div class="feed-category">
-                <span>${esc(currentCard.category)}</span>
-              </div>
+              <div class="feed-category"><span>${esc(currentCard.category)}</span></div>
               <h2 class="feed-headline">${esc(currentCard.title)}</h2>
               <p class="feed-summary">${esc(currentCard.desc)}</p>
 
               <div class="feed-bottom-row">
-                <button class="feed-action-btn" data-nav="${currentCard.nav}">
-                  ${esc(currentCard.actionText)} →
-                </button>
+                <button class="feed-action-btn" data-nav="${esc(currentCard.nav)}">${esc(currentCard.actionText)} →</button>
                 <span class="feed-meta-time">● ${esc(currentCard.time)}</span>
               </div>
             </div>
           </article>
 
-          <!-- Card Lateral Direito -->
-          <article class="theatre-card slot-1" style="background-image: url('${nextCard.bg}');">
+          <article class="theatre-card slot-1" data-card="next" style="background-image: url('${nextCard.bg}');">
             <div class="card-overlay">
               <span class="card-kicker">${esc(nextCard.category)}</span>
               <h3>${esc(nextCard.title)}</h3>
@@ -186,33 +241,25 @@ export function render(root) {
           </article>
         </div>
 
-        <!-- Seta Próximo -->
-        <button class="theatre-arrow theatre-arrow-next" id="theatreNext" aria-label="Próximo card">
-          ›
-        </button>
+        <button class="theatre-arrow theatre-arrow-next" data-card="next" aria-label="Próximo card">›</button>
       </section>
     </div>
   `;
 
-  // Event Listeners dos controles do Carrossel
-  root.querySelector('#theatrePrev')?.addEventListener('click', () => {
-    activeCardIndex = (activeCardIndex - 1 + THEATRE_CARDS.length) % THEATRE_CARDS.length;
+  const go = delta => {
+    render.index = (activeCardIndex + delta + cards.length) % cards.length;
     render(root);
-  });
+  };
 
-  root.querySelector('#theatreNext')?.addEventListener('click', () => {
-    activeCardIndex = (activeCardIndex + 1) % THEATRE_CARDS.length;
-    render(root);
-  });
+  root.querySelectorAll('[data-card="prev"]').forEach(el => el.addEventListener('click', () => go(-1)));
+  root.querySelectorAll('[data-card="next"]').forEach(el => el.addEventListener('click', () => go(1)));
 
-  // Clique nos cards laterais para avançar/voltar
-  root.querySelector('.slot-n1')?.addEventListener('click', () => {
-    activeCardIndex = (activeCardIndex - 1 + THEATRE_CARDS.length) % THEATRE_CARDS.length;
-    render(root);
-  });
-
-  root.querySelector('.slot-1')?.addEventListener('click', () => {
-    activeCardIndex = (activeCardIndex + 1) % THEATRE_CARDS.length;
-    render(root);
+  root.querySelectorAll('.cal-day-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const day = btn.dataset.day;
+      const todayKey = toDateInput(new Date());
+      if (day === todayKey) return;
+      location.hash = '#/tasks';
+    });
   });
 }
