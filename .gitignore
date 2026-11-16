@@ -10,3 +10,6 @@ craft-anything/
 craft-output/
 hod-extension/.tools/
 
+# Vault pessoal do Obsidian — nunca versionar
+/HOD/
+
