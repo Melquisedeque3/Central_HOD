@@ -28,6 +28,16 @@ let abortCtl = null;
 let listening = false;
 let recognizer = null;
 
+const VOICE_KEY = 'hod:hermes:voiceOut';
+let voiceOut = (() => { try { return localStorage.getItem(VOICE_KEY) === '1'; } catch { return false; } })();
+let voiceCtx = {};
+let autoSend = false;
+function setVoiceOut(on) {
+  voiceOut = !!on;
+  try { localStorage.setItem(VOICE_KEY, voiceOut ? '1' : '0'); } catch { /* ignora */ }
+  if (!voiceOut) stopSpeaking();
+}
+
 function loadHistory() {
   try {
     const raw = sessionStorage.getItem(HISTORY_KEY);
@@ -282,6 +292,8 @@ function renderChat(connected) {
 
     <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:flex-end;background:rgba(0,0,0,0.16);">
       <button class="btn ghost" id="aiMic" title="Falar (voz do sistema)" style="padding:10px 14px;">🎙</button>
+      <button class="btn ghost ${voiceOut ? 'is-active' : ''}" id="aiSpeak" title="${voiceOut ? 'Respostas em voz alta: ligado' : 'Respostas em voz alta: desligado'}"
+        style="padding:10px 14px;${voiceOut ? 'border-color:var(--accent);color:var(--accent);' : 'opacity:.65;'}">🔊</button>
       <textarea id="hermesInput" rows="1" placeholder="${connected ? 'Pergunte ou dê uma ordem ao agente…  (Enter envia, Shift+Enter quebra linha)' : 'Conecte o Hermes em Ajustes para conversar'}"
         ${connected ? '' : 'disabled'}
         style="flex:1;resize:none;padding:11px 14px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid var(--line);color:var(--ink);font-size:13.5px;font-family:inherit;line-height:1.5;max-height:140px;outline:none;"></textarea>
@@ -353,6 +365,7 @@ function renderLog(log) {
    ============================================================ */
 function wire(root, ctx) {
   const { connected, model, actions } = ctx;
+  voiceCtx = ctx;
 
   root.querySelectorAll('[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -397,6 +410,13 @@ function wire(root, ctx) {
 
   /* microfone (Web Speech API — gratuito, roda no navegador) */
   root.querySelector('#aiMic')?.addEventListener('click', () => toggleMic(root, input));
+
+  /* leitura em voz alta das respostas */
+  root.querySelector('#aiSpeak')?.addEventListener('click', () => {
+    setVoiceOut(!voiceOut);
+    render(root);
+    toast(voiceOut ? 'Respostas em voz alta ligadas' : 'Respostas em voz alta desligadas');
+  });
 
   /* ações contextuais */
   root.querySelectorAll('[data-agent-action]').forEach(btn => {
@@ -477,6 +497,7 @@ async function stream(root, { model, system, user, label }) {
     pushLog({ label: label || 'conversa', ok: true, detail: `${Math.round((Date.now() - started) / 1000)}s · ${answer.length} chars` });
     busy = false;
     render(root);
+    if (voiceOut) speak(answer);
   } catch (err) {
     const aborted = err.name === 'AbortError';
     history.push({
@@ -506,6 +527,11 @@ function toggleMic(root, input) {
     return;
   }
 
+  /* não ouvir a própria voz enquanto fala */
+  stopSpeaking();
+
+  autoSend = voiceOut;
+
   recognizer = new SR();
   recognizer.lang = 'pt-BR';
   recognizer.interimResults = true;
@@ -527,12 +553,29 @@ function toggleMic(root, input) {
 
   recognizer.onerror = e => {
     listening = false;
-    if (e.error !== 'aborted') toast(`Microfone: ${e.error}`, 'error');
+    root.querySelector('#aiMic')?.classList.remove('is-listening');
+    if (e.error !== 'aborted') {
+      const msg = e.error === 'not-allowed'
+        ? 'Permissão de microfone negada — libere o microfone para 127.0.0.1:8420 no navegador.'
+        : e.error === 'no-speech'
+          ? 'Nada foi captado. Tente de novo mais perto do microfone.'
+          : `Microfone: ${e.error}`;
+      toast(msg, 'error');
+    }
   };
 
   recognizer.onend = () => {
     listening = false;
     root.querySelector('#aiMic')?.classList.remove('is-listening');
+    /* modo voz: ao terminar de falar, envia sozinho */
+    if (autoSend && input && input.value.trim() && !busy) {
+      const text = input.value.trim();
+      input.value = '';
+      history.push({ role: 'user', content: text });
+      saveHistory();
+      render(root);
+      stream(root, { ...voiceCtx, user: text });
+    }
   };
 
   try {
@@ -545,12 +588,53 @@ function toggleMic(root, input) {
   }
 }
 
-/* ---------- TTS opcional (voz local, sem custo) ---------- */
+/* ---------- TTS (voz local do sistema, sem custo) ---------- */
+function pickPtVoice() {
+  const voices = speechSynthesis.getVoices() || [];
+  const score = v => {
+    const lang = (v.lang || '').toLowerCase().replace('_', '-');
+    let s = 0;
+    if (lang === 'pt-br') s += 100;
+    else if (lang.startsWith('pt')) s += 50;
+    else return -1;
+    if (v.localService) s += 10;
+    if (/luciana|felipe|joana|daniel|maria|google/i.test(v.name || '')) s += 5;
+    return s;
+  };
+  return voices.map(v => [score(v), v]).filter(([s]) => s > 0).sort((a, b) => b[0] - a[0])[0]?.[1] || null;
+}
+
+/* markdown não deve ser lido em voz alta */
+function speakable(text) {
+  return String(text)
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_#>|]/g, ' ')
+    .replace(/^\s*[-•]\s*/gm, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function stopSpeaking() {
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+}
+
 export function speak(text) {
   if (!('speechSynthesis' in window)) return;
-  const utter = new SpeechSynthesisUtterance(String(text).slice(0, 800));
-  utter.lang = 'pt-BR';
+  const clean = speakable(text);
+  if (!clean) return;
+  const utter = new SpeechSynthesisUtterance(clean.slice(0, 800));
+  const voice = pickPtVoice();
+  if (voice) utter.voice = voice;
+  utter.lang = voice?.lang || 'pt-BR';
   utter.rate = 1.02;
   speechSynthesis.cancel();
   speechSynthesis.speak(utter);
+}
+
+/* as vozes carregam de forma assíncrona no Chrome — aquece a lista */
+if ('speechSynthesis' in window) {
+  speechSynthesis.getVoices();
+  speechSynthesis.addEventListener?.('voiceschanged', () => speechSynthesis.getVoices());
 }

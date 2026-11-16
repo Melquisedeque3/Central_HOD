@@ -28,6 +28,7 @@ O sistema opera sobre uma arquitetura de **três pilares acoplados localmente**:
    - [5.7 Skills / Ferramentas que o Hermes Deve Registrar](#57-skills--ferramentas-que-o-hermes-deve-registrar)
    - [5.8 Serviço em Background (LaunchAgent macOS / systemd Linux)](#58-serviço-em-background-launchagent-macos--systemd-linux)
    - [5.9 Checklist de Verificação Pós-Instalação (Smoke Test)](#59-checklist-de-verificação-pós-instalação-smoke-test)
+   - [5.10 Armadilhas conhecidas](#510-armadilhas-conhecidas-todas-já-observadas-em-instalação-real)
 6. [Voz (STT & TTS Gratuitos)](#6-voz-stt--tts-gratuitos)
 7. [Segurança e Privacidade](#7-segurança-e-privacidade)
 8. [Solução de Problemas](#8-solução-de-problemas)
@@ -102,38 +103,37 @@ O sistema opera sobre uma arquitetura de **três pilares acoplados localmente**:
 
 ## 3. Estrutura do Repositório
 
+> **⚠️ A aplicação vive em `hod-extension/`**, não na raiz do repositório. `node server.mjs` só funciona **de dentro dessa pasta**; executado da raiz, o Node falha com `MODULE_NOT_FOUND`.
+
 ```text
-.
-├── server.mjs                 # Servidor HTTP Node.js (porta 8420), rotas REST e proxies
-├── package.json               # Scripts: start, dev, seed, smoke (zero dependências)
-├── .hod-config.example.json   # Modelo de configuração local (Hermes + Obsidian + Vault)
-├── index.html                 # Shell da aplicação (SPA editorial)
-├── styles.css                 # Design system completo (dark editorial theme)
-├── lib/
-│   ├── frontmatter.mjs        # Parser e serializer YAML <-> Markdown zero-dependências
-│   └── vault.mjs              # Motor do Vault: indexação, escrita atômica, tombstones, bag
-├── js/
-│   ├── main.js                # Roteador hash, transições, atalhos de teclado, topbar status
-│   ├── api.js                 # Cliente HTTP/SSE para comunicação com server.mjs
-│   ├── store.js               # Estado reativo v4, fila serializada de escrita e fallback local
-│   ├── actions.js             # Dispatcher central de eventos (data-action)
-│   ├── ui.js                  # Utilitários DOM, modais, toasts, sanitização e Markdown
-│   ├── components.js          # Componentes reutilizáveis (linhas de tarefa, badges, cards)
-│   └── views/                 # Views modulares:
-│       ├── home.js            # Visão geral executiva
-│       ├── ai.js              # Console Hermes Agent (chat SSE, 6 ações, voz STT/TTS)
-│       ├── apps.js            # Lista + Kanban de candidaturas
-│       ├── appDetail.js       # Detalhe da candidatura, steps, histórico e editor .md
-│       ├── tasks.js           # Gestão de tarefas
-│       ├── routine.js         # Cronograma e blocos de rotina diária
-│       ├── metrics.js         # Gráficos SVG e saúde do vault
-│       ├── study.js           # Leitor/editor de guidelines + importador + tutor IA
-│       ├── email.js           # Caixa de entrada + triagem IA
-│       ├── settings.js        # Painel de conexões (Vault, Hermes, Obsidian) e backups
-│       └── modals.js          # Modais de criação/edição de entidades
-└── scripts/
-    ├── seed.mjs               # Popula um vault vazio com dados de demonstração realistas
-    └── smoke.mjs              # Suíte automatizada com 54 asserções de API, CRUD e segurança
+Central_HOD/
+├── hod-extension/             # ← A APLICAÇÃO VIVE AQUI
+│   ├── server.mjs             # Servidor HTTP Node.js (porta 8420), rotas REST e proxies
+│   ├── package.json           # Scripts: start, dev, seed, smoke (zero dependências)
+│   ├── .hod-config.example.json  # Modelo de configuração local (Hermes + Obsidian)
+│   ├── .hod-config.json       # Config real + segredos (gitignored; você cria)
+│   ├── index.html             # Shell da aplicação (SPA editorial)
+│   ├── style.css              # Design system completo (dark editorial theme)
+│   ├── fonts/ · icons/ · theme-1/  # Fontes, ícones e imagens do tema
+│   ├── lib/
+│   │   ├── frontmatter.mjs    # Parser e serializer YAML <-> Markdown zero-dependências
+│   │   └── vault.mjs          # Motor do Vault: indexação, escrita atômica, tombstones, bag
+│   ├── js/
+│   │   ├── main.js            # Roteador hash, transições, atalhos de teclado, topbar status
+│   │   ├── api.js             # Cliente HTTP/SSE para comunicação com server.mjs
+│   │   ├── store.js           # Estado reativo v4, fila serializada de escrita e fallback local
+│   │   ├── state.js           # Estado de interface (filtros, aba ativa, painéis)
+│   │   ├── actions.js         # Dispatcher central de eventos (data-action)
+│   │   ├── ui.js              # Utilitários DOM, modais, toasts, sanitização e Markdown
+│   │   ├── components.js      # Componentes reutilizáveis (linhas de tarefa, badges, cards)
+│   │   └── views/             # home · ai · apps · appDetail · tasks · routine
+│   │                          # metrics · study · email · settings · modals
+│   ├── scripts/
+│   │   ├── seed.mjs           # Popula um vault vazio com dados de demonstração realistas
+│   │   └── smoke.mjs          # Suíte automatizada com 54 asserções de API, CRUD e segurança
+│   └── legacy-v1/             # Arquivo histórico da extensão Chrome (não é servido)
+└── hermes-skills/
+    └── hod-hermes/            # Skill pronta para copiar em ~/.hermes/skills/productivity/
 ```
 
 ---
@@ -143,7 +143,7 @@ O sistema opera sobre uma arquitetura de **três pilares acoplados localmente**:
 ```bash
 # 1. Clone o repositório
 git clone https://github.com/Melquisedeque3/Central_HOD.git
-cd Central_HOD
+cd Central_HOD/hod-extension
 
 # 2. Inicie apontando para a pasta do seu Vault no Obsidian
 node server.mjs --vault "/caminho/absoluto/para/seu/VaultObsidian"
@@ -209,30 +209,41 @@ O HOD lê e grava diretamente no sistema de arquivos do vault (`lib/vault.mjs`),
 
 ### 5.3 Configuração de Persistência (`.hod-config.json`)
 
-Crie o arquivo `.hod-config.json` na raiz deste repositório (ele está no `.gitignore` e nunca será commitado). Preencha-o com os dados reais descobertos nos passos anteriores:
+Crie o arquivo `.hod-config.json` **dentro de `hod-extension/`** (ele está no `.gitignore` e nunca será commitado). O schema é **aninhado e fechado**: o `readConfig()` do servidor só lê as chaves abaixo. Qualquer campo inventado (`vaultPath`, `apiKey`, `dashboardUrl`, `systemPrompt`…) é **silenciosamente ignorado** — e o Hermes acaba sem chave.
 
 ```json
 {
-  "vaultPath": "/caminho/absoluto/para/o/VaultDoObsidian",
   "obsidian": {
     "enabled": false,
     "url": "http://127.0.0.1:27123",
-    "apiKey": "",
-    "vaultName": "Home Office"
+    "key": "",
+    "folder": ""
   },
   "hermes": {
     "enabled": true,
     "url": "http://127.0.0.1:8642",
-    "apiKey": "COLE_AQUI_A_API_SERVER_KEY_DO_HERMES",
-    "model": "ID_DO_MODELO_RETORNADO_POR_V1_MODELS",
-    "dashboardUrl": "http://127.0.0.1:9119",
-    "systemPrompt": "Você é o Hermes Agent, cérebro operacional da Central de Home Office (HOD). O vault do Obsidian é a fonte de verdade. Seja objetivo, prático, responda em português do Brasil e proponha ações concretas sobre candidaturas, tarefas, rotina, guidelines e e-mails."
-  }
+    "key": "COLE_AQUI_O_API_SERVER_KEY_DO_HERMES",
+    "model": "hermes-agent",
+    "dashboard": "http://127.0.0.1:9119"
+  },
+  "ui": { "theme": "dark" }
 }
 ```
 
-> **Nota sobre `server.mjs` e `--vault`:**
-> Ao iniciar o `server.mjs`, passe `--vault "/caminho/absoluto/para/o/VaultDoObsidian"` (ou defina a variável de ambiente `HOD_VAULT="/caminho/absoluto/para/o/VaultDoObsidian"`).
+| Campo | Observação |
+|---|---|
+| `hermes.key` | Segredo — **não é `apiKey`**. Copie de `API_SERVER_KEY` em `~/.hermes/.env` |
+| `hermes.model` | Precisa ser um `id` devolvido por `/v1/models` (o Hermes anuncia `hermes-agent`) |
+| `obsidian.key` | Chave do plugin Local REST API (opcional; `obsidian.folder` limita a subpasta) |
+| `routine.slots` | Opcional; se omitido, o servidor usa os blocos padrão |
+
+> **Não existe chave `vaultPath`.** O vault é sempre argumento de linha de comando — nunca configuração:
+
+```bash
+node server.mjs --vault "/caminho/absoluto/para/o/VaultDoObsidian" --config "$PWD/.hod-config.json"
+```
+
+Ou por ambiente: `HOD_VAULT="/caminho/do/vault" node server.mjs`.
 
 ---
 
@@ -365,17 +376,22 @@ O Hermes Agent deve operar o sistema preferencialmente através da API HTTP loca
 |---|---|---|
 | `GET /api/health` | Diagnóstico completo do sistema | Retorna `{ ok: true, mode: "vault", vault: {...}, connections: { obsidian, hermes } }` |
 | `GET /api/state` | Snapshot completo do vault | Retorna `{ version: 4, applications, tasks, guidelines, routine, emails, calendarEvents, driveFiles, vault, connections }` |
-| `POST /api/records` | Cria ou atualiza um registro (`.md`) | Body: `{ "type": "application\|task\|guideline\|routine\|settings", "data": { ... } }` → Retorna `{ ok: true, record }` |
+| `POST /api/records` | Cria ou atualiza um registro (`.md`) | Body: `{ "type": "application\|task\|guideline\|routine\|settings", "data": { ... } }` → `{ ok: true, record }`. **`data.id` é obrigatório** — sem ele, `400 {"error":"Registro sem id."}` |
 | `DELETE /api/records/:type/:id` | Move nota para `.hod/trash/` e cria tombstone | Retorna `{ ok: true, deleted: true, path }` |
 | `POST /api/bag` | Atualiza listas auxiliares em `.hod/bag.json` | Body: `{ "emails": [...], "calendarEvents": [...], "driveFiles": [...] }` |
 | `POST /api/reindex` | Revarre todos os `.md` do disco e reconstrói `.hod/index.json` | Retorna o novo estado completo (mesmo formato de `GET /api/state`) |
 | `GET /api/note?path=<relPath>` | Lê o conteúdo Markdown bruto de uma nota do vault | Retorna `{ path, content }` |
 | `PUT /api/note` | Sobrescreve o Markdown bruto de uma nota e reindexa | Body: `{ "path": "Candidaturas/...", "content": "---\n..." }` |
 | `GET /api/config` | Lê a configuração pública de integrações | Retorna URLs, modelos e flags `hasKey` (nunca expõe segredos) |
-| `POST /api/config` | Atualiza `.hod-config.json` | Body parcial com `{ vaultPath?, obsidian?, hermes? }` |
+| `POST /api/config` | Atualiza `.hod-config.json` | Body parcial com `{ obsidian?, hermes?, ui?, routine? }` |
 | `GET /api/hermes/models` | Proxy para `GET <hermes.url>/v1/models` | Lista modelos disponíveis no Hermes |
 | `POST /api/hermes/chat` | Proxy para `POST <hermes.url>/v1/chat/completions` | Suporta `stream: true` (SSE) e `stream: false` (JSON) |
-| `POST /api/hermes/run` | Executa uma `action` operacional com `context` do vault | Body: `{ action, input, context }` → `{ ok: true, reply, model }` |
+| `POST /api/hermes/run` | Atalho que repassa direto para `<hermes.url>/v1/chat/completions` | Body: `{ "messages": [...], "model": "..." }`. **Não** aceita `{ action, input, context }` — use `/api/hermes/chat` |
+
+> **Contrato real do agente:** o endereço usado pelo frontend é `POST /api/hermes/chat`, com
+> `{ "messages": [{ "role": "user", "content": "..." }], "stream": true|false }`. É o mesmo formato
+> OpenAI. O `run` existe apenas como conveniência e encaminha `messages` — payloads no formato
+> `{ action, input, context }` retornam erro do upstream (`Missing or invalid 'messages' field`).
 
 ---
 
@@ -397,6 +413,13 @@ Para que o Hermes Agent, o Obsidian e o Frontend operem sem conflito:
 ---
 
 ### 5.7 Skills / Ferramentas que o Hermes Deve Registrar
+
+> **Atalho:** o repositório já traz uma skill pronta em [`hermes-skills/hod-hermes/`](hermes-skills/hod-hermes/SKILL.md), extraída de uma instalação real. Copie antes de improvisar:
+> ```bash
+> mkdir -p ~/.hermes/skills/productivity
+> cp -R hod-extension/hermes-skills/hod-hermes ~/.hermes/skills/productivity/
+> ```
+> Ela documenta os caminhos corretos, o schema real da config e as armadilhas que fariam a instalação falhar.
 
 Como cérebro do HOD, configure ou utilize suas ferramentas internas (HTTP / Shell / File) para executar os seguintes fluxos sempre que o usuário pedir:
 
@@ -443,14 +466,14 @@ Para que o usuário não precise abrir o terminal toda vez, o Hermes Agent pode 
   <key>ProgramArguments</key>
   <array>
     <string>/usr/local/bin/node</string>
-    <string>/CAMINHO/PARA/Central_HOD/server.mjs</string>
+    <string>/CAMINHO/PARA/Central_HOD/hod-extension/server.mjs</string>
     <string>--vault</string>
     <string>/CAMINHO/PARA/VaultDoObsidian</string>
     <string>--config</string>
-    <string>/CAMINHO/PARA/Central_HOD/.hod-config.json</string>
+    <string>/CAMINHO/PARA/Central_HOD/hod-extension/.hod-config.json</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/CAMINHO/PARA/Central_HOD</string>
+  <string>/CAMINHO/PARA/Central_HOD/hod-extension</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -462,7 +485,7 @@ Para que o usuário não precise abrir o terminal toda vez, o Hermes Agent pode 
 </dict>
 </plist>
 ```
-*(Substitua `/usr/local/bin/node` pelo resultado de `which node` e ajuste os caminhos absolutos. Carregue com `launchctl load ~/Library/LaunchAgents/local.hod.server.plist`.)*
+*(Três detalhes que já quebraram instalações reais: **1)** use o caminho **absoluto** do Node — `shutil.which('node')`; quando o Hermes instalou o próprio runtime ele fica em `~/.hermes/tools/node-*/bin/node`, não em `/usr/local/bin`. **2)** **Mate o processo órfão antes de carregar**, senão o launchd entra em loop de `EADDRINUSE`: `pkill -f "hod-extension/server.mjs"` e confirme com `lsof -nP -iTCP:8420`. **3)** Valide com `plutil -lint`, carregue com `launchctl load -w ~/Library/LaunchAgents/local.hod.server.plist` e confira `launchctl list | grep local.hod` mostrando exit code `0`.)*
 
 #### No Linux (`~/.config/systemd/user/hod.service`)
 ```ini
@@ -472,8 +495,8 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/CAMINHO/PARA/Central_HOD
-ExecStart=/usr/bin/env node /CAMINHO/PARA/Central_HOD/server.mjs --vault "/CAMINHO/PARA/VaultDoObsidian" --config "/CAMINHO/PARA/Central_HOD/.hod-config.json"
+WorkingDirectory=/CAMINHO/PARA/Central_HOD/hod-extension
+ExecStart=/usr/bin/env node /CAMINHO/PARA/Central_HOD/hod-extension/server.mjs --vault "/CAMINHO/PARA/VaultDoObsidian" --config "/CAMINHO/PARA/Central_HOD/hod-extension/.hod-config.json"
 Restart=on-failure
 
 [Install]
@@ -505,29 +528,53 @@ Antes de reportar ao usuário que o sistema está pronto, o Hermes Agent deve ex
 
 3. **Testar uma execução real do Agente via HOD**:
    ```bash
-   curl -s -X POST http://127.0.0.1:8420/api/hermes/run \
+   curl -s -X POST http://127.0.0.1:8420/api/hermes/chat \
      -H "Content-Type: application/json" \
-     -d '{"action":"daily-briefing","input":"Teste de conexão inicial","context":{"counts":{"applications":0,"tasks":0}}}'
+     -d '{"messages":[{"role":"user","content":"Diga em uma frase: conexão HOD-Hermes ativa?"}],"stream":false}'
    ```
-   Confirme que retorna `"ok": true` e `"reply": "..."`.
+   Confirme que a resposta traz `choices[0].message.content` com texto em português.
+   *(Este é o contrato real: formato OpenAI com `messages`. O payload `{action, input, context}`
+   do `/api/hermes/run` **não existe** e falha no upstream.)*
 
-Quando os 3 passos responderem `"ok": true`, informe ao usuário que a **Central HOD está 100% operacional em `http://127.0.0.1:8420`**, integrada ao Obsidian e ao Hermes Agent.
+Quando os 3 passos responderem com sucesso, informe ao usuário que a **Central HOD está 100% operacional em `http://127.0.0.1:8420`**, integrada ao Obsidian e ao Hermes Agent.
+
+---
+
+### 5.10 Armadilhas conhecidas (todas já observadas em instalação real)
+
+| Sintoma | Causa | Correção |
+|---|---|---|
+| `MODULE_NOT_FOUND: .../Central_HOD/server.mjs` | Rodou da raiz do repo | `cd hod-extension` antes de `node server.mjs` |
+| `GET /api/hermes/models` → `401`/`502` | `hermes.key` vazio ou errado | Copiar `API_SERVER_KEY` de `~/.hermes/.env` para `hermes.key` |
+| Config "aceita" mas o Hermes nunca conecta | Usou `apiKey`/`vaultPath` (campos inexistentes) | Usar `hermes.key`; vault vai em `--vault` |
+| `Missing or invalid 'messages' field` | Mandou `{action, input, context}` | Mandar `{messages: [...]}` |
+| `400 {"error":"Registro sem id."}` | `POST /api/records` sem `data.id` | Gerar `id` estável no cliente antes de criar |
+| LaunchAgent em loop com `EADDRINUSE` | `node server.mjs` manual ainda ocupa a 8420 | `pkill -f "hod-extension/server.mjs"` e só então `launchctl load` |
+| launchd não sobe o node | `/usr/local/bin/node` não existe na máquina | Usar `shutil.which('node')` — costuma estar em `~/.hermes/tools/node-*/bin/node` |
+| Vault indexa 0 notas | Caminho de vault inventado | Ler o path real de `~/Library/Application Support/obsidian/obsidian.json` |
+| Edição no Obsidian não aparece | Índice desatualizado | `POST /api/reindex` (ou botão **Sincronizar vault**) |
+| `409 Conflict` ao salvar | Nota mudou no disco depois do load | Reler via `GET /api/note`, mesclar e reenviar com o `updatedAt` atual |
 
 ---
 
 ## 6. Voz (STT & TTS Gratuitos)
 
-- **Entrada de voz (Microfone)**: utiliza `window.SpeechRecognition` / `window.webkitSpeechRecognition` nativo do navegador em `pt-BR`.
-- **Saída de voz (Leitura de respostas)**: utiliza `window.speechSynthesis` nativo do sistema operacional, selecionando automaticamente vozes em português (`pt-BR` / `pt`).
-- **Custo zero**: nenhuma API paga de áudio é utilizada. Se o navegador não suportar reconhecimento de fala, o botão informa o usuário e o chat em texto segue funcionando normalmente.
+- **Entrada de voz (Microfone 🎙)**: `window.SpeechRecognition` / `window.webkitSpeechRecognition` nativo, em `pt-BR`.
+- **Saída de voz (Leitura 🔊)**: `window.speechSynthesis` nativo do sistema. O botão alterna a leitura das respostas e o estado fica em `localStorage['hod:hermes:voiceOut']`.
+- **Seleção de voz**: `pickPtVoice()` pontua por `pt-BR` > `pt` e prioriza vozes locais; `speakable()` remove blocos de código, markdown e links antes de falar.
+- **Modo conversa**: com o 🔊 ligado, ao terminar de falar a pergunta é enviada sozinha e a resposta é lida em voz alta — e o microfone é silenciado antes de abrir, para não transcrever a própria resposta.
+- **Custo zero**: nenhuma API paga de áudio.
+
+> **Limite de navegador:** o STT é do Chromium e depende do serviço de fala do Google — **Chrome/Edge/Safari ok, Brave e Firefox costumam bloquear**. O TTS é local e funciona em qualquer um. Se o 🎙 não abrir, diagnostique com `!!(window.SpeechRecognition || window.webkitSpeechRecognition)` antes de suspeitar do HOD. As vozes do Chrome carregam de forma assíncrona; o `voiceschanged` já é tratado no código.
 
 ---
 
 ## 7. Segurança e Privacidade
 
 - **Escuta restrita a loopback**: por padrão, `server.mjs` escuta apenas em `127.0.0.1:8420`. Não exponha a porta à internet pública sem camada de autenticação.
-- **Segredos isolados no servidor**: as chaves `hermes.apiKey` e `obsidian.apiKey` ficam salvas somente em `.hod-config.json` no disco local. A rota `GET /api/config` jamais devolve as chaves para o navegador (apenas `hasKey: true|false`).
+- **Segredos isolados no servidor**: as chaves `hermes.key` e `obsidian.key` ficam salvas somente em `.hod-config.json` no disco local. A rota `GET /api/config` jamais devolve as chaves para o navegador (apenas `hasKey: true|false`).
 - **Proteção de diretórios internos**: o servidor HTTP bloqueia com `403 Forbidden` qualquer acesso estático a `/lib`, `/vault`, `/scripts`, `/.git`, `/node_modules`, `/.tools`, `/legacy-v1` e arquivos ocultos (`/.`).
+- **O vault nunca vai para o Git**: `vault/`, `.hod/` e `.hod-config.json` estão no `.gitignore`. Não versione notas pessoais — nem como pasta `HOD/` na raiz do repositório. Se quiser compartilhar dados de exemplo, use `npm run seed` em um vault descartável.
 
 ---
 
@@ -536,7 +583,7 @@ Quando os 3 passos responderem `"ok": true`, informe ao usuário que a **Central
 | Sintoma | Causa Provável & Solução |
 |---|---|
 | Pill superior mostra **"Modo local (navegador)"** | Você abriu o `index.html` via `file://` ou o `server.mjs` está parado. Inicie `node server.mjs --vault "..."` e acesse `http://127.0.0.1:8420`. |
-| **Hermes Agent retorna 502 / Offline** | O API Server do Hermes não está rodando na porta `8642` ou a `API_SERVER_KEY` em `.hod-config.json` está incorreta. Verifique `curl http://127.0.0.1:8642/v1/models`. |
+| **Hermes Agent retorna 502 / Offline** | O API Server do Hermes não está rodando na porta `8642`, ou o `hermes.key` em `.hod-config.json` está errado. Verifique `curl http://127.0.0.1:8642/v1/models`. |
 | **Editei uma nota no Obsidian e não mudou na tela** | Clique no botão **"Sincronizar vault"** na barra lateral esquerda (ou envie `POST /api/reindex`). |
 | **Erro `409 Conflict` ao salvar** | A nota foi alterada no disco após o carregamento da tela. Recarregue/sincronize o vault para obter a versão mais recente. |
 | **Desejo popular dados de exemplo** | Com o servidor apontando para um vault vazio, execute `npm run seed` (ou `node scripts/seed.mjs --force`). |
