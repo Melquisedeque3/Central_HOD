@@ -20,3 +20,7 @@ vault/
 .DS_Store
 *.log
 *.pid
+
+# bytecode gerado pelos testes Python
+__pycache__/
+*.py[cod]
