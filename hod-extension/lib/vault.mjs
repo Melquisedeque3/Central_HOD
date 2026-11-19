@@ -15,19 +15,20 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { parseFrontmatter, buildNote } from './frontmatter.mjs';
 import { AuditLog } from './audit.mjs';
-import { applicationFingerprint, validateRecord } from './validation.mjs';
+import { applicationFingerprint, opportunityFingerprint, validateRecord } from './validation.mjs';
 
 export const TYPES = {
   application: { dir: 'Candidaturas', prefix: 'app' },
   task: { dir: 'Tarefas', prefix: 'task' },
   guideline: { dir: 'Guidelines', prefix: 'guide' },
   routine: { dir: 'Rotina', prefix: 'rot' },
+  opportunity: { dir: 'Oportunidades', prefix: 'opp' },
   settings: { dir: '.', prefix: 'set' },
 };
 
 const META_DIR = '.hod';
 const SAFE_NAME = /[\\/:*?"<>|#^[\]]/g;
-const RAW_NOTE_DIRS = new Set(['Candidaturas', 'Tarefas', 'Guidelines', 'Rotina', 'inbox']);
+const RAW_NOTE_DIRS = new Set(['Candidaturas', 'Tarefas', 'Guidelines', 'Rotina', 'Oportunidades', 'inbox']);
 const INBOX_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.csv', '.json']);
 const WORK_DIRS = new Set(['Insights', 'Relatorios', 'Semanal', 'Mensal']);
 
@@ -72,6 +73,7 @@ function baseName(type, data) {
   if (type === 'guideline') return slug(data.title, 'Guideline');
   if (type === 'task') return slug(data.title, 'Tarefa');
   if (type === 'routine') return slug(data.label || data.start || 'Bloco', 'Bloco');
+  if (type === 'opportunity') return slug(`${data.company || 'Oportunidade'} — ${data.title || 'Sem título'}`, 'Oportunidade');
   return 'HOD — Configurações';
 }
 
@@ -232,6 +234,14 @@ export class Vault {
         throw err;
       }
     }
+    if (type === 'opportunity') {
+      const fingerprint = opportunityFingerprint(data);
+      const duplicate = index.records.find(record => record.type === 'opportunity' && record.id !== data.id && opportunityFingerprint(record.data) === fingerprint);
+      if (duplicate) {
+        const err = new Error('Oportunidade duplicada: já existe registro equivalente na fonte.');
+        err.status = 409; err.current = duplicate; throw err;
+      }
+    }
 
     const dirRel = cfg.dir === '.' ? '' : `${cfg.dir}/`;
     const desired = path.join(this.root, dirRel + baseName(type, data) + '.md');
@@ -330,7 +340,7 @@ export class Vault {
   async state() {
     const index = await this.scan();
     const out = {
-      applications: [], tasks: [], guidelines: [], routine: [],
+      applications: [], tasks: [], guidelines: [], routine: [], opportunities: [],
       emails: [], calendarEvents: [], driveFiles: [],
       settings: {},
     };
@@ -339,6 +349,7 @@ export class Vault {
       else if (r.type === 'task') out.tasks.push(r.data);
       else if (r.type === 'guideline') out.guidelines.push({ ...r.data, body: r.body });
       else if (r.type === 'routine') out.routine.push(r.data);
+      else if (r.type === 'opportunity') out.opportunities.push(r.data);
       else if (r.type === 'settings') out.settings = r.data;
     }
     const bag = await this._readJson('bag.json', {});

@@ -21,7 +21,7 @@ export async function buildWorkContext(vault, { period = 'daily' } = {}) {
   return { pending_applications: pendingApplications, waiting_response: waitingResponse, overdue_tasks: overdueTasks, priority_items: priorityItems, recent_changes: recentChanges, alerts: overdueTasks.map(t => ({ type: 'OVERDUE_TASK', task_id: t.id, title: t.title })), summary: { period, applications: state.applications.length, open_tasks: state.tasks.filter(t => t.status !== 'done').length, overdue_tasks: overdueTasks.length, waiting_response: waitingResponse.length } };
 }
 
-export async function applyWorkAction(vault, input) {
+export async function applyWorkAction(vault, input, { actor = 'WORK', origin = 'work' } = {}) {
   if (!input || typeof input !== 'object' || !ACTIONS.has(input.type)) throw fail('Ação Work não permitida.');
   const payload = input.payload && typeof input.payload === 'object' ? input.payload : {};
   const state = await vault.state();
@@ -29,29 +29,29 @@ export async function applyWorkAction(vault, input) {
   if (input.type === 'ADD_NOTE') {
     const current = app(payload.applicationId); if (typeof payload.note !== 'string' || !payload.note.trim() || payload.note.length > 12000) throw fail('Nota inválida.');
     const next = { ...current, notes: [current.notes, payload.note.trim()].filter(Boolean).join('\n\n'), history: [{ at: new Date().toISOString(), text: 'Nota adicionada pelo Work' }, ...(current.history || [])], updatedAt: new Date().toISOString() };
-    validateRecord('application', next); return { action: input.type, result: await vault.put('application', next, { actor: 'WORK', origin: 'work' }) };
+    validateRecord('application', next); return { action: input.type, result: await vault.put('application', next, { actor, origin }) };
   }
   if (input.type === 'UPDATE_STATUS') {
     const current = app(payload.applicationId); if (!stage.has(payload.status)) throw fail('Status inválido.');
     const next = { ...current, stage: payload.status, history: [{ at: new Date().toISOString(), text: `Status atualizado pelo Work: ${payload.status}` }, ...(current.history || [])], updatedAt: new Date().toISOString() };
-    validateRecord('application', next); return { action: input.type, result: await vault.put('application', next, { actor: 'WORK', origin: 'work' }) };
+    validateRecord('application', next); return { action: input.type, result: await vault.put('application', next, { actor, origin }) };
   }
   if (input.type === 'CREATE_TASK' || input.type === 'SCHEDULE_FOLLOWUP') {
     const applicationId = payload.applicationId || ''; const related = applicationId ? app(applicationId) : null;
     const title = input.type === 'SCHEDULE_FOLLOWUP' ? (payload.title || `Follow-up: ${related?.company || ''}`) : payload.title;
     if (state.tasks.some(t => t.status !== 'done' && t.appId === applicationId && t.title === title)) throw fail('Tarefa equivalente já está aberta.', 409);
     const task = { id: id('task'), title, notes: String(payload.notes || ''), status: 'todo', priority: payload.priority || 'normal', dueAt: payload.dueAt || '', appId: applicationId, appLabel: related ? `${related.company}${related.role ? ' — ' + related.role : ''}` : '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-    validateRecord('task', task); return { action: input.type, result: await vault.put('task', task, { actor: 'WORK', origin: 'work' }) };
+    validateRecord('task', task); return { action: input.type, result: await vault.put('task', task, { actor, origin }) };
   }
   if (input.type === 'UPDATE_PRIORITY') {
     if (!priority.has(payload.priority) || !['application', 'task'].includes(payload.entity)) throw fail('Atualização de prioridade inválida.');
     const collection = payload.entity === 'application' ? state.applications : state.tasks; const current = collection.find(item => item.id === payload.id); if (!current) throw fail('Entidade não encontrada.', 404);
     const next = { ...current, priority: payload.priority, updatedAt: new Date().toISOString() }; validateRecord(payload.entity, next);
-    return { action: input.type, result: await vault.put(payload.entity, next, { actor: 'WORK', origin: 'work' }) };
+    return { action: input.type, result: await vault.put(payload.entity, next, { actor, origin }) };
   }
   if (input.type === 'REGISTER_ANALYSIS') {
     if (typeof payload.title !== 'string' || typeof payload.content !== 'string') throw fail('Análise inválida.');
-    return { action: input.type, result: await vault.writeWorkDocument('Insights', { title: payload.title, content: payload.content, relatedId: String(payload.applicationId || '') }, { actor: 'WORK', origin: 'work' }) };
+    return { action: input.type, result: await vault.writeWorkDocument('Insights', { title: payload.title, content: payload.content, relatedId: String(payload.applicationId || '') }, { actor, origin }) };
   }
   throw fail('Ação Work não implementada.');
 }

@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 export const ROLES = Object.freeze({
+  COLLECTOR_WRITE: 5,
   WORK_READ: 10,
   WORK_WRITE_LIMITED: 20,
   USER: 30,
@@ -42,6 +43,8 @@ export async function loadAuth(authFile) {
     { value: process.env.HOD_USER_TOKEN, role: 'USER', name: 'user' },
     { value: process.env.HOD_WORK_READ_TOKEN, role: 'WORK_READ', name: 'work-read' },
     { value: process.env.HOD_WORK_WRITE_TOKEN, role: 'WORK_WRITE_LIMITED', name: 'work-write-limited' },
+    { value: process.env.HOD_MCP_TOKEN, role: 'WORK_WRITE_LIMITED', name: 'mcp' },
+    { value: process.env.HOD_COLLECTOR_TOKEN, role: 'COLLECTOR_WRITE', name: 'collector' },
   ].filter(token => token.value);
 
   return {

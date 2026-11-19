@@ -19,6 +19,7 @@
 import http from 'node:http';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Vault, TYPES } from './lib/vault.mjs';
 import { canAccess, isAllowedOrigin, loadAuth, validateLoopbackUrl } from './lib/security.mjs';
@@ -240,7 +241,7 @@ async function handleAPI(req, res, url) {
   const method = req.method || 'GET';
 
   const actor = auth.authenticate(req);
-  const auditActor = actor?.role.startsWith('WORK') ? 'WORK' : 'USER';
+  const auditActor = actor?.name === 'mcp' ? 'MCP' : actor?.name === 'collector' ? 'COLLECTOR' : actor?.role.startsWith('WORK') ? 'WORK' : 'USER';
   const requireRole = role => {
     if (!isAllowedOrigin(req, HOST, PORT)) {
       sendError(res, 403, 'Origem não permitida.');
@@ -268,7 +269,7 @@ async function handleAPI(req, res, url) {
   if (pathname === '/work/actions' && method === 'POST') {
     if (!requireRole('WORK_WRITE_LIMITED')) return;
     const body = await readBody(req);
-    const output = await applyWorkAction(vault, body);
+    const output = await applyWorkAction(vault, body, { actor: auditActor, origin: actor?.name === 'mcp' ? 'mcp' : 'work' });
     return sendJSON(res, 201, { ok: true, ...output });
   }
   if (/^\/work\/routines\/(daily|weekly)$/.test(pathname) && method === 'GET') {
@@ -285,6 +286,26 @@ async function handleAPI(req, res, url) {
     const state = await vault.state();
     state.connections = publicConfig();
     return sendJSON(res, 200, { ok: true, state });
+  }
+
+  /* ---- inbox determinístico de oportunidades para coletores autorizados ---- */
+  if (pathname === '/api/opportunities' && method === 'GET') {
+    if (!requireRole('USER')) return;
+    const state = await vault.state();
+    return sendJSON(res, 200, { ok: true, opportunities: state.opportunities || [] });
+  }
+  if (pathname === '/api/opportunities' && method === 'POST') {
+    if (!requireRole('COLLECTOR_WRITE')) return;
+    const body = await readBody(req);
+    const data = body.data && typeof body.data === 'object' ? { ...body.data } : {};
+    const fingerprint = [data.source, data.sourceId || data.url, data.title, data.company].map(value => String(value || '').trim().toLocaleLowerCase('pt-BR')).join('|');
+    data.id = data.id || `opp_${crypto.createHash('sha256').update(fingerprint).digest('hex').slice(0, 24)}`;
+    data.status = data.status || 'found';
+    data.priority = data.priority || 'normal';
+    data.collectedAt = data.collectedAt || new Date().toISOString();
+    validateRecord('opportunity', data);
+    const saved = await vault.put('opportunity', data, { actor: auditActor, origin: actor?.name === 'collector' ? 'collector' : 'api' });
+    return sendJSON(res, 201, { ok: true, ...saved });
   }
 
   /* ---- upsert de registro ---- */

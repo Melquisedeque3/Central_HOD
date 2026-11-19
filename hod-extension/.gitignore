@@ -14,6 +14,7 @@ vault/
 
 # ferramentas e arquivos locais de pesquisa
 .tools/
+.agents/mcp_config.json
 
 # sistema
 .DS_Store

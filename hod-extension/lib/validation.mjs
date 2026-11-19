@@ -47,12 +47,26 @@ export function validateRecord(type, data) {
     text(data.label, 'rótulo', { required: true, max: 160 });
     if (data.start && !/^\d{2}:\d{2}$/.test(data.start)) throw bad('horário inicial inválido.');
     if (data.end && !/^\d{2}:\d{2}$/.test(data.end)) throw bad('horário final inválido.');
+  } else if (type === 'opportunity') {
+    text(data.source, 'fonte', { required: true, max: 120 });
+    text(data.company, 'empresa', { max: 160 }); text(data.title, 'cargo/projeto', { required: true, max: 240 });
+    text(data.description, 'descrição', { max: 120000 }); text(data.requirements, 'requisitos', { max: 120000 });
+    text(data.sourceId, 'id da fonte', { max: 240 }); text(data.status, 'status', { max: 40 });
+    if (data.priority && !PRIORITIES.has(data.priority)) throw bad('prioridade inválida.');
+    url(data.url, 'URL original'); date(data.publishedAt, 'data de publicação'); date(data.collectedAt, 'data de coleta');
+    list(data.evidence, 'evidências', 40);
   }
   return data;
 }
 
 export function applicationFingerprint(data) {
   return [data.company, data.role, data.link, data.appliedAt]
+    .map(value => String(value || '').trim().toLocaleLowerCase('pt-BR').replace(/\/+$/, ''))
+    .join('|');
+}
+
+export function opportunityFingerprint(data) {
+  return [data.source, data.sourceId || data.url, data.title, data.company]
     .map(value => String(value || '').trim().toLocaleLowerCase('pt-BR').replace(/\/+$/, ''))
     .join('|');
 }

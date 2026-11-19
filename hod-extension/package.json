@@ -16,6 +16,8 @@
     "test:unit": "node scripts/unit-resilience.mjs",
     "test:security": "node scripts/security-integration.mjs",
     "test:performance": "node scripts/performance.mjs",
+    "mcp": "node mcp/hod-mcp.mjs",
+    "test:mcp": "node scripts/mcp-integration.mjs",
     "seed": "node scripts/seed.mjs"
   },
   "keywords": [

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "hod": {
+      "command": "node",
+      "args": ["/CAMINHO/ABSOLUTO/Central_HOD/hod-extension/mcp/hod-mcp.mjs"],
+      "env": {
+        "HOD_API_URL": "http://127.0.0.1:8420",
+        "HOD_MCP_TOKEN": "DEFINA_FORA_DO_REPOSITORIO"
+      }
+    }
+  }
+}

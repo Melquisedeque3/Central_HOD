@@ -24,8 +24,9 @@ Nunca versione tokens, `.hod-config.json`, `.hod-auth.json` ou o vault pessoal.
 - `npm run test:security` — autorização e superfícies de ataque em instância isolada.
 - `npm run test:work-e2e` e `npm run test:work-restart` — contrato Work e persistência.
 - `npm run test:performance` — medição local reproduzível com 300 registros temporários.
+- `npm run test:mcp` — protocolo MCP local, autorização e auditoria.
 
-Consulte [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md), [WORK_INTEGRATION.md](WORK_INTEGRATION.md), [OBSIDIAN_INTEGRATION.md](OBSIDIAN_INTEGRATION.md), [BACKUP.md](BACKUP.md) e [TESTING.md](TESTING.md).
+Consulte [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md), [WORK_INTEGRATION.md](WORK_INTEGRATION.md), [OBSIDIAN_INTEGRATION.md](OBSIDIAN_INTEGRATION.md), [BACKUP.md](BACKUP.md), [TESTING.md](TESTING.md), [MCP_INTEGRATION.md](MCP_INTEGRATION.md), [COLLECTORS.md](COLLECTORS.md) e [AUTOMATIONS.md](AUTOMATIONS.md).
 
 ## Troubleshooting e limitações
 
