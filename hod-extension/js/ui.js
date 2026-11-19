@@ -11,6 +11,15 @@ export function esc(value) {
     .replace(/'/g, '&#39;');
 }
 
+export function safeExternalUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return ['http:', 'https:'].includes(url.protocol) ? esc(url.href) : '';
+  } catch {
+    return '';
+  }
+}
+
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 

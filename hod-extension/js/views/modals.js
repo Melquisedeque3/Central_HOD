@@ -69,7 +69,7 @@ export function openAppModal(id = '', preset = {}) {
       </div>
       <div class="grid-2">
         ${select('Etapa', 'stage', STAGES.map(s => ({ value: s.id, label: s.name })), app?.stage || preset.stage || 'mapeada')}
-        ${select('Prioridade', 'priority', PRIORITIES.map(p => ({ value: p.id, label: p.name })), app?.priority || 'importante')}
+        ${select('Prioridade', 'priority', PRIORITIES.map(p => ({ value: p.id, label: p.name })), app?.priority || preset.priority || 'importante')}
       </div>
       ${field('Próxima ação', 'nextAction', app?.nextAction || '', { placeholder: 'Ex.: Enviar e-mail de follow-up' })}
       <div class="grid-2">

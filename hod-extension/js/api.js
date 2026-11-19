@@ -111,23 +111,6 @@ export function writeNote(path, content) {
   return request('/api/note', { method: 'PUT', body: { path, content } });
 }
 
-/* ---------- Obsidian Local REST API (via proxy do servidor) ---------- */
-export async function obsidianTest() {
-  const res = await request('/api/obsidian/vault/', { timeout: 8000, raw: true });
-  return res.ok;
-}
-
-export function obsidianRequest(tail, { method = 'POST', body, contentType = 'application/json' } = {}) {
-  const headers = { 'content-type': contentType };
-  const init = { method, headers };
-  if (body !== undefined) init.body = typeof body === 'string' ? body : JSON.stringify(body);
-  return fetch(`/api/obsidian${tail}`, init).then(async res => {
-    const text = await res.text();
-    if (!res.ok) throw new Error(`Obsidian ${res.status}: ${text.slice(0, 200)}`);
-    try { return JSON.parse(text); } catch { return text; }
-  });
-}
-
 /* ---------- Hermes ---------- */
 export async function hermesModels() {
   const data = await request('/api/hermes/models', { timeout: 10000 });

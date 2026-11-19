@@ -11,6 +11,11 @@
     "start": "node server.mjs",
     "dev": "node --watch server.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "test:work-e2e": "node scripts/work-e2e.mjs",
+    "test:work-restart": "node scripts/work-restart-check.mjs",
+    "test:unit": "node scripts/unit-resilience.mjs",
+    "test:security": "node scripts/security-integration.mjs",
+    "test:performance": "node scripts/performance.mjs",
     "seed": "node scripts/seed.mjs"
   },
   "keywords": [

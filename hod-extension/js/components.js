@@ -20,8 +20,8 @@ export function taskRow(task, { compact = false } = {}) {
   const done = task.status === 'done';
   const info = dueInfo(task.dueAt);
   const overdue = info && info.tone === 'over' && !done;
-  return `<div class="task-row ${done ? 'done' : ''} ${overdue ? 'overdue' : ''}" data-task-id="${task.id}">
-    <button class="check ${done ? 'on' : ''}" data-action="toggle-task" data-id="${task.id}"
+  return `<div class="task-row ${done ? 'done' : ''} ${overdue ? 'overdue' : ''}" data-task-id="${esc(task.id)}">
+    <button class="check ${done ? 'on' : ''}" data-action="toggle-task" data-id="${esc(task.id)}"
       aria-label="${done ? 'Reabrir' : 'Concluir'} tarefa" aria-pressed="${done}">
       ${done ? '✓' : ''}
     </button>
@@ -29,14 +29,14 @@ export function taskRow(task, { compact = false } = {}) {
       <div class="task-title">${esc(task.title)}</div>
       <div class="task-meta">
         ${priorityDot(task.priority)}
-        ${app ? `<button class="link" data-action="open-app" data-id="${app.id}">${esc(app.company)}</button>` : ''}
+        ${app ? `<button class="link" data-action="open-app" data-id="${esc(app.id)}">${esc(app.company)}</button>` : ''}
         ${task.notes && !compact ? `<span class="muted">· ${esc(task.notes.slice(0, 90))}</span>` : ''}
       </div>
     </div>
     ${task.dueAt ? deadlineChip(task.dueAt) : ''}
     <div class="row-actions">
-      <button class="icon-btn" data-action="edit-task" data-id="${task.id}" aria-label="Editar tarefa">✎</button>
-      <button class="icon-btn danger" data-action="del-task" data-id="${task.id}" aria-label="Excluir tarefa">✕</button>
+      <button class="icon-btn" data-action="edit-task" data-id="${esc(task.id)}" aria-label="Editar tarefa">✎</button>
+      <button class="icon-btn danger" data-action="del-task" data-id="${esc(task.id)}" aria-label="Excluir tarefa">✕</button>
     </div>
   </div>`;
 }
@@ -50,7 +50,7 @@ export function appRow(app) {
   const done = app.steps.filter(s => s.status === 'done').length;
   const total = app.steps.length;
   const info = dueInfo(app.deadline);
-  return `<button class="app-row" data-action="open-app" data-id="${app.id}">
+  return `<button class="app-row" data-action="open-app" data-id="${esc(app.id)}">
     <div class="app-row-main">
       <div class="app-company">${esc(app.company)}</div>
       <div class="app-role">${esc(app.role || 'Sem função definida')}</div>
@@ -68,7 +68,7 @@ export function stepRow(app, step) {
   const info = dueInfo(step.dueAt);
   const done = step.status === 'done';
   return `<div class="step-row ${done ? 'done' : ''}" data-step-id="${step.id}">
-    <button class="check ${done ? 'on' : ''}" data-action="toggle-step" data-app="${app.id}" data-id="${step.id}"
+    <button class="check ${done ? 'on' : ''}" data-action="toggle-step" data-app="${esc(app.id)}" data-id="${esc(step.id)}"
       aria-label="${done ? 'Reabrir etapa' : 'Concluir etapa'}" aria-pressed="${done}">${done ? '✓' : ''}</button>
     <div class="step-main">
       <div class="step-title">${esc(step.title)}</div>
@@ -76,8 +76,8 @@ export function stepRow(app, step) {
     </div>
     ${step.dueAt ? deadlineChip(step.dueAt) : ''}
     <div class="row-actions">
-      <button class="icon-btn" data-action="edit-step" data-app="${app.id}" data-id="${step.id}" aria-label="Editar etapa">✎</button>
-      <button class="icon-btn danger" data-action="del-step" data-app="${app.id}" data-id="${step.id}" aria-label="Excluir etapa">✕</button>
+      <button class="icon-btn" data-action="edit-step" data-app="${esc(app.id)}" data-id="${esc(step.id)}" aria-label="Editar etapa">✎</button>
+      <button class="icon-btn danger" data-action="del-step" data-app="${esc(app.id)}" data-id="${esc(step.id)}" aria-label="Excluir etapa">✕</button>
     </div>
   </div>`;
 }

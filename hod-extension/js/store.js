@@ -228,7 +228,23 @@ function enqueue(task) {
       state.sync.pending = pending;
       state.sync.lastError = err.message || String(err);
       console.error('[HOD] falha ao gravar:', err);
+      // A interface usa atualização otimista. Em caso de falha, o vault volta
+      // a ser a fonte de verdade para que nenhuma alteração aparente sucesso.
+      if (isVault()) {
+        return api.fetchState().then(remote => {
+          state = normalize(remote);
+          state.sync.mode = 'vault';
+          state.connections = remote.connections || null;
+          state.vault = remote.vault || null;
+          state.sync.lastError = err.message || String(err);
+          writeMirror();
+        }).catch(() => {}).finally(() => {
+          emit();
+          window.dispatchEvent(new CustomEvent('hod:persistence-error', { detail: state.sync.lastError }));
+        });
+      }
       emit();
+      window.dispatchEvent(new CustomEvent('hod:persistence-error', { detail: state.sync.lastError }));
     })
     .finally(() => { if (pending === 0) emit(); });
   return chain;

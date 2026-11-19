@@ -55,6 +55,8 @@ const PAGE_LABEL = {
 
 const viewEl = $('#view');
 const viewBody = $('#view-body');
+const agentWindow = $('#agent-window');
+const agentWindowBody = $('#agent-window-body');
 let current = { view: home, params: {}, name: 'home' };
 let lastRenderedAt = 0;
 
@@ -440,7 +442,31 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   e.preventDefault();
+  if (el.dataset.action === 'open-agent') return openAgentWindow();
   dispatch(el.dataset.action, { ...el.dataset }, el);
+});
+
+function openAgentWindow() {
+  if (!agentWindow || !agentWindowBody) return;
+  agentWindow.hidden = false;
+  ai.render(agentWindowBody);
+  agentWindow.querySelector('#hermesInput')?.focus();
+}
+
+function closeAgentWindow() { if (agentWindow) agentWindow.hidden = true; }
+
+$('#agent-window-close')?.addEventListener('click', closeAgentWindow);
+$('#agent-window-drag')?.addEventListener('pointerdown', event => {
+  if (event.target.closest('button') || !agentWindow) return;
+  const rect = agentWindow.getBoundingClientRect();
+  const offsetX = event.clientX - rect.left; const offsetY = event.clientY - rect.top;
+  const move = e => {
+    const x = Math.max(8, Math.min(window.innerWidth - rect.width - 8, e.clientX - offsetX));
+    const y = Math.max(8, Math.min(window.innerHeight - rect.height - 8, e.clientY - offsetY));
+    agentWindow.style.left = `${x}px`; agentWindow.style.top = `${y}px`; agentWindow.style.right = 'auto'; agentWindow.style.bottom = 'auto';
+  };
+  const stop = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', stop, { once: true });
 });
 
 let filterTimer = null;
@@ -456,6 +482,9 @@ viewEl.addEventListener('change', onFilter);
 
 window.addEventListener('hashchange', navigate);
 subscribe(() => { if (Date.now() - lastRenderedAt > 30) render(); });
+window.addEventListener('hod:persistence-error', event => {
+  toast(`A gravação falhou; o estado foi restaurado do vault. ${event.detail || ''}`, 'error');
+});
 
 /* ---------- atalhos ---------- */
 let gPressed = 0;
@@ -463,7 +492,7 @@ document.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key.toLowerCase() === 'g') { gPressed = Date.now(); return; }
   if (Date.now() - gPressed < 900) {
-    const map = { h: '#/home', a: '#/apps', t: '#/tasks', m: '#/email', e: '#/study', r: '#/routine', k: '#/metrics', i: '#/ai', s: '#/settings' };
+    const map = { h: '#/home', a: '#/apps', t: '#/tasks', m: '#/email', e: '#/study', r: '#/routine', k: '#/metrics', s: '#/settings' };
     const target = map[e.key.toLowerCase()];
     if (target) { location.hash = target; gPressed = 0; }
   }

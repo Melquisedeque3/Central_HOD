@@ -21,6 +21,7 @@
 import process from 'node:process';
 
 const BASE = (process.env.HOD_URL || 'http://127.0.0.1:8420').replace(/\/$/, '');
+const TOKEN = process.env.HOD_TOKEN || '';
 const STAMP = Date.now().toString(36);
 const APP_ID = `smoke_app_${STAMP}`;
 const TASK_ID = `smoke_task_${STAMP}`;
@@ -42,7 +43,7 @@ const check = (name, ok, detail = '') => {
 async function api(path, init = {}) {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { 'content-type': 'application/json', ...(init.headers || {}) },
+    headers: { 'content-type': 'application/json', ...(TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}), ...(init.headers || {}) },
   });
   const text = await res.text();
   let body = null;

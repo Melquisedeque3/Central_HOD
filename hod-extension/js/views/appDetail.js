@@ -1,7 +1,7 @@
 /* ============================================================
    views/appDetail.js — processo completo de uma candidatura
    ============================================================ */
-import { esc, fmtDate, fmtDateTime, relativeTime, dueInfo, emptyState, progressBar, miniMarkdown } from '../ui.js';
+import { esc, safeExternalUrl, fmtDate, fmtDateTime, relativeTime, dueInfo, emptyState, progressBar, miniMarkdown } from '../ui.js';
 import { getState, getApplication, STAGES, stageById, updateApplication, priorityById } from '../store.js';
 import { stepRow, taskRow, deadlineChip, appName } from '../components.js';
 
@@ -35,8 +35,8 @@ export function render(root, params) {
     <div class="detail-top">
       <a class="back" href="#/apps">← Processos</a>
       <div class="detail-actions">
-        <button class="btn ghost" data-action="edit-app" data-id="${app.id}">Editar</button>
-        <button class="btn danger-ghost" data-action="del-app" data-id="${app.id}">Excluir</button>
+        <button class="btn ghost" data-action="edit-app" data-id="${esc(app.id)}">Editar</button>
+        <button class="btn danger-ghost" data-action="del-app" data-id="${esc(app.id)}">Excluir</button>
       </div>
     </div>
 
@@ -55,11 +55,11 @@ export function render(root, params) {
       <div class="detail-stage">
         <label class="field compact">
           <span>Mover para</span>
-          <select data-stage-select data-id="${app.id}">
+          <select data-stage-select data-id="${esc(app.id)}">
             ${STAGES.map(s => `<option value="${s.id}" ${s.id === app.stage ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
           </select>
         </label>
-        ${app.link ? `<a class="btn ghost" href="${esc(app.link)}" target="_blank" rel="noopener">Abrir vaga ↗</a>` : ''}
+        ${safeExternalUrl(app.link) ? `<a class="btn ghost" href="${safeExternalUrl(app.link)}" target="_blank" rel="noopener">Abrir vaga ↗</a>` : ''}
       </div>
     </header>
 
@@ -79,7 +79,7 @@ export function render(root, params) {
             <h3>Etapas do processo</h3>
             <div class="head-actions">
               <span class="muted small">${done}/${app.steps.length}</span>
-              <button class="btn ghost sm" data-action="add-step" data-app="${app.id}">+ Etapa</button>
+              <button class="btn ghost sm" data-action="add-step" data-app="${esc(app.id)}">+ Etapa</button>
             </div>
           </header>
           ${app.steps.length
@@ -90,7 +90,7 @@ export function render(root, params) {
         <section class="card">
           <header class="card-head">
             <h3>Tarefas ligadas</h3>
-            <button class="btn ghost sm" data-action="new-task" data-app="${app.id}">+ Tarefa</button>
+            <button class="btn ghost sm" data-action="new-task" data-app="${esc(app.id)}">+ Tarefa</button>
           </header>
           ${openTasks.length ? `<div class="task-list">${openTasks.map(t => taskRow(t)).join('')}</div>` : `<p class="muted pad">Nenhuma tarefa aberta.</p>`}
         </section>
@@ -101,7 +101,7 @@ export function render(root, params) {
             <a class="link" href="#/study">abrir estudo →</a>
           </header>
           ${guides.length ? `<ul class="guide-list">${guides.map(g => `<li>
-            <a href="#/study?g=${g.id}" class="link strong">${esc(g.title)}</a>
+            <a href="#/study?g=${encodeURIComponent(g.id)}" class="link strong">${esc(g.title)}</a>
             <small class="muted">${esc(g.language || '—')} · ${relativeTime(g.updatedAt)}</small>
           </li>`).join('')}</ul>` : `<p class="muted pad">Nenhuma guideline ligada a este processo.</p>`}
         </section>

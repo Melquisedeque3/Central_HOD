@@ -30,7 +30,7 @@ const LOCAL_ACTIONS = new Set([
 const HANDLERS = {
   'open-app': ({ id }) => { location.hash = `#/apps/${id}`; },
   'edit-app': ({ id }) => openAppModal(id),
-  'new-app': ({ company }) => openAppModal('', { company: company || '' }),
+  'new-app': ({ company, priority }) => openAppModal('', { company: company || '', priority: priority || '' }),
   'del-app': ({ id }) => confirmDeleteApp(id),
 
   'new-task': ({ app, priority, dueAt }) => openTaskModal('', {

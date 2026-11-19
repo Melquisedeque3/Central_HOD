@@ -4,11 +4,11 @@
    empresa daquela candidatura (persistido no vault).
    ============================================================ */
 import { esc, emptyState, fmtDate, priorityDot, progressBar } from '../ui.js';
-import { getState, STAGES, stageById, updateApplication } from '../store.js';
+import { getState, STAGES, PRIORITIES, stageById, updateApplication } from '../store.js';
 import { uiState } from '../state.js';
 import { deadlineChip } from '../components.js';
 
-export const meta = { kicker: 'Candidaturas', title: 'Candidaturas por Empresa' };
+export const meta = { kicker: 'Candidaturas', title: 'Candidaturas por Prioridade' };
 
 export function render(root) {
   const state = getState();
@@ -24,14 +24,7 @@ export function render(root) {
       return da - db || a.company.localeCompare(b.company);
     });
 
-  const companyGroups = {};
-  filteredApps.forEach(app => {
-    const company = (app.company || 'Sem empresa').trim();
-    if (!companyGroups[company]) companyGroups[company] = [];
-    companyGroups[company].push(app);
-  });
-
-  const companies = Object.keys(companyGroups).sort((a, b) => a.localeCompare(b));
+  const priorityGroups = Object.fromEntries(PRIORITIES.map(priority => [priority.id, filteredApps.filter(app => (app.priority || 'normal') === priority.id)]));
   const hasFilter = !!(q || f.stage);
 
   root.innerHTML = `
@@ -44,43 +37,43 @@ export function render(root) {
         </select>
       </div>
       <div class="toolbar-right">
-        <span class="muted small">${filteredApps.length} de ${allApps.length} candidatura(s) · ${companies.length} empresa(s)</span>
+        <span class="muted small">${filteredApps.length} de ${allApps.length} candidatura(s) · 4 prioridades</span>
         <button class="btn primary" data-action="new-app">+ Nova candidatura</button>
       </div>
     </div>
 
     ${!allApps.length
-      ? emptyState('🗂', 'Nenhuma candidatura cadastrada', 'Adicione vagas para ver os quadros organizados automaticamente por empresa.', '<button class="btn primary" data-action="new-app">Criar candidatura</button>')
+      ? emptyState('🗂', 'Nenhuma candidatura cadastrada', 'Adicione vagas para vê-las organizadas por prioridade.', '<button class="btn primary" data-action="new-app">Criar candidatura</button>')
       : !filteredApps.length
         ? emptyState('🔎', 'Nada encontrado com esse filtro', 'Ajuste a busca ou a etapa para ver suas candidaturas.', '<button class="btn" data-action="clear-apps-filter">Limpar filtros</button>')
         : `
         <div style="margin-bottom: 34px;">
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px;">
             <h3 style="font-size: 15px; font-weight: 500; letter-spacing: 0.02em; color: var(--ink);">
-              Visão Kanban <span style="font-size: 13px; color: var(--muted-2); font-weight: 400;">(arraste um card para outra empresa para reatribuir)</span>
+              Visão Kanban <span style="font-size: 13px; color: var(--muted-2); font-weight: 400;">(arraste um card para mudar a prioridade)</span>
             </h3>
           </div>
 
           <div class="kanban" role="list" style="display: flex; gap: 16px; overflow-x: auto; padding-bottom: 14px;">
-            ${companies.map(company => {
-              const cards = companyGroups[company];
+            ${PRIORITIES.map(priority => {
+              const cards = priorityGroups[priority.id];
               return `
-                <section class="kcol" data-company="${esc(company)}" style="min-width: 280px; max-width: 320px; flex: 1;" role="listitem" aria-label="${esc(company)}">
+                <section class="kcol" data-priority="${priority.id}" style="min-width: 260px; max-width: 320px; flex: 1;" role="listitem" aria-label="${esc(priority.name)}">
                   <header class="kcol-head" style="display: flex; align-items: center; justify-content: space-between;">
                     <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                      <span class="kdot" style="background: var(--accent);"></span>
-                      <h3 style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${esc(company)}</h3>
+                      <span class="kdot" style="background: ${priority.color};"></span>
+                      <h3 style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${esc(priority.name)}</h3>
                     </div>
                     <span class="kcount">${cards.length}</span>
                   </header>
 
-                  <div class="kcards" data-drop-company="${esc(company)}" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+                  <div class="kcards" data-drop-priority="${priority.id}" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
                     ${cards.map(app => {
                       const stage = stageById(app.stage);
                       const done = app.steps.filter(s => s.status === 'done').length;
                       return `
-                        <article class="kcard" tabindex="0" draggable="true" data-id="${app.id}">
-                          <button class="kcard-body" data-action="open-app" data-id="${app.id}" style="text-align: left; width: 100%; border: none; background: transparent; cursor: pointer;">
+                        <article class="kcard" tabindex="0" draggable="true" data-id="${esc(app.id)}">
+                          <button class="kcard-body" data-action="open-app" data-id="${esc(app.id)}" style="text-align: left; width: 100%; border: none; background: transparent; cursor: pointer;">
                             <div class="kcard-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                               <span class="chip stage" style="--chip:${stage.color}; font-size: 10.5px;">${esc(stage.short)}</span>
                               ${priorityDot(app.priority)}
@@ -93,13 +86,13 @@ export function render(root) {
                             </div>
                           </button>
                           <div class="kcard-actions" style="margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: flex-end; gap: 8px;">
-                            <button class="icon-btn" data-action="edit-app" data-id="${app.id}" title="Editar candidatura">✎</button>
-                            <button class="icon-btn danger" data-action="del-app" data-id="${app.id}" title="Excluir candidatura">✕</button>
+                            <button class="icon-btn" data-action="edit-app" data-id="${esc(app.id)}" title="Editar candidatura">✎</button>
+                            <button class="icon-btn danger" data-action="del-app" data-id="${esc(app.id)}" title="Excluir candidatura">✕</button>
                           </div>
                         </article>
                       `;
                     }).join('')}
-                    <button class="kadd" data-action="new-app" data-company="${esc(company)}" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px dashed var(--line); background: transparent; color: var(--muted-2); cursor: pointer; font-size: 12.5px;">+ nova vaga nesta empresa</button>
+                    <button class="kadd" data-action="new-app" data-priority="${priority.id}" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px dashed var(--line); background: transparent; color: var(--muted-2); cursor: pointer; font-size: 12.5px;">+ nova candidatura</button>
                   </div>
                 </section>
               `;
@@ -132,8 +125,8 @@ export function render(root) {
                   <td>${app.deadline ? deadlineChip(app.deadline) : '<span class="muted">—</span>'}</td>
                   <td><div class="cell-progress">${progressBar(done, app.steps.length)}<small class="muted">${done}/${app.steps.length}</small></div></td>
                   <td class="row-actions">
-                    <button class="icon-btn" data-action="edit-app" data-id="${app.id}" aria-label="Editar">✎</button>
-                    <button class="icon-btn danger" data-action="del-app" data-id="${app.id}" aria-label="Excluir">✕</button>
+                    <button class="icon-btn" data-action="edit-app" data-id="${esc(app.id)}" aria-label="Editar">✎</button>
+                    <button class="icon-btn danger" data-action="del-app" data-id="${esc(app.id)}" aria-label="Excluir">✕</button>
                   </td>
                 </tr>`;
               }).join('')}
@@ -148,11 +141,11 @@ export function render(root) {
     render(root);
   });
 
-  wireCompanyDrag(root);
+  wirePriorityDrag(root);
 }
 
-/* arrastar card entre colunas de empresa = reatribuir empresa */
-function wireCompanyDrag(root) {
+/* arrastar card entre colunas = atualizar prioridade */
+function wirePriorityDrag(root) {
   let draggingId = null;
 
   root.querySelectorAll('.kcard[draggable]').forEach(el => {
@@ -172,7 +165,7 @@ function wireCompanyDrag(root) {
     });
   });
 
-  root.querySelectorAll('[data-drop-company]').forEach(zone => {
+  root.querySelectorAll('[data-drop-priority]').forEach(zone => {
     zone.addEventListener('dragover', e => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -186,11 +179,11 @@ function wireCompanyDrag(root) {
       e.preventDefault();
       zone.closest('.kcol')?.classList.remove('dragover');
       const id = draggingId || e.dataTransfer.getData('text/plain');
-      const company = zone.dataset.dropCompany;
-      if (!id || !company) return;
+      const priority = zone.dataset.dropPriority;
+      if (!id || !priority) return;
       const app = getState().applications.find(a => a.id === id);
-      if (!app || app.company === company) return;
-      updateApplication(id, { company }, `Empresa alterada para ${company}`);
+      if (!app || app.priority === priority) return;
+      updateApplication(id, { priority }, `Prioridade alterada para ${priority}`);
     });
   });
 }

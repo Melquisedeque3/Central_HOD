@@ -155,22 +155,23 @@ export function render(root) {
   const state = getState();
   const s = stats();
   const week = getWeekDays();
-  const cards = buildCards(state);
-
-  const activeCardIndex = Math.min(render.index || 0, cards.length - 1);
-  render.index = activeCardIndex;
-
-  const currentCard = cards[activeCardIndex];
-  const prevCard = cards[(activeCardIndex - 1 + cards.length) % cards.length];
-  const nextCard = cards[(activeCardIndex + 1) % cards.length];
-
   const overdue = state.tasks.filter(t => t.status !== 'done' && t.dueAt && new Date(t.dueAt) < new Date()).length;
-  const vaultNote = state.vault?.notes ?? 0;
-  const modeLabel = state.sync.mode === 'vault' ? 'Vault' : 'Local';
+  const apps = state.applications || [];
+  const tasks = state.tasks || [];
+  const emails = state.emails || [];
+  const priorities = ['urgente', 'importante', 'normal', 'baixa'];
+  const labels = { urgente: 'Urgente', importante: 'Importante', normal: 'Normal', baixa: 'Baixa' };
+  const openTasks = tasks.filter(task => task.status !== 'done');
 
   root.innerHTML = `
     <div class="home-os-stage">
       <section class="home-top-bar">
+        <div class="quick-status-capsule">
+          <div class="status-item" data-nav="tasks" title="Tarefas diárias">
+            <span class="status-icon">${overdue ? '⚠' : '✓'}</span>
+            <div><strong>${overdue ? 'Pendências' : 'Em dia'}</strong><small>${s.openTasks} tarefa(s) aberta(s)${overdue ? ` · ${overdue} atrasada(s)` : ''}</small></div>
+          </div>
+        </div>
         <div class="calendar-capsule">
           ${week.map(d => `
             <button type="button" class="cal-day-btn ${d.isToday ? 'is-selected' : ''}" data-day="${d.key}">
@@ -181,78 +182,26 @@ export function render(root) {
           `).join('')}
         </div>
 
-        <div class="quick-status-capsule">
-          <div class="status-item" data-nav="tasks" title="Tarefas abertas e atrasadas">
-            <span class="status-icon">${overdue ? '⚠' : '✓'}</span>
-            <div>
-              <strong>${overdue ? 'Atrasadas' : 'Em dia'}</strong>
-              <small>${s.openTasks} abertas${overdue ? ` · ${overdue} atrasada(s)` : ''}</small>
-            </div>
-          </div>
-          <div class="status-divider"></div>
-          <div class="status-item" data-nav="settings" title="Modo de armazenamento">
-            <span class="status-icon">${state.sync.mode === 'vault' ? '🗄' : '💾'}</span>
-            <div>
-              <strong>${modeLabel}</strong>
-              <small>${state.sync.mode === 'vault' ? `${vaultNote} nota(s)` : 'só neste navegador'}</small>
-            </div>
-          </div>
-        </div>
-
-        <button class="feed-toggle-btn" data-nav="ai" title="Abrir o agente Hermes">
+        <button class="feed-toggle-btn" data-action="open-agent" title="Abrir agente">
           <span>✨</span> Agente
         </button>
       </section>
 
-      <section class="workspace-theatre" id="workspaceTheatre">
-        <button class="theatre-arrow theatre-arrow-prev" data-card="prev" aria-label="Card anterior">‹</button>
-
-        <div class="theatre-rail">
-          <article class="theatre-card slot-n1" data-card="prev" style="background-image: url('${prevCard.bg}');">
-            <div class="card-overlay">
-              <span class="card-kicker">${esc(prevCard.category)}</span>
-              <h3>${esc(prevCard.title)}</h3>
-            </div>
-          </article>
-
-          <article class="theatre-card is-active" aria-current="true" style="background-image: url('${currentCard.bg}');">
-            <div class="card-backdrop-gradient"></div>
-            <div class="feed-cover-content">
-              <div class="feed-top-row">
-                <span class="feed-mark">HOD / FEED</span>
-                <span class="feed-counter">0${activeCardIndex + 1} / 0${cards.length}</span>
-              </div>
-              <div class="feed-category"><span>${esc(currentCard.category)}</span></div>
-              <h2 class="feed-headline">${esc(currentCard.title)}</h2>
-              <p class="feed-summary">${esc(currentCard.desc)}</p>
-
-              <div class="feed-bottom-row">
-                <button class="feed-action-btn" data-nav="${esc(currentCard.nav)}">${esc(currentCard.actionText)} →</button>
-                <span class="feed-meta-time">● ${esc(currentCard.time)}</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="theatre-card slot-1" data-card="next" style="background-image: url('${nextCard.bg}');">
-            <div class="card-overlay">
-              <span class="card-kicker">${esc(nextCard.category)}</span>
-              <h3>${esc(nextCard.title)}</h3>
-            </div>
-          </article>
+      <section class="home-summary" style="background-image:url('theme-1/metrics.webp');">
+        <div class="home-summary-shade"></div>
+        <div class="summary-content">
+          <div class="summary-heading"><span>VISÃO GERAL</span><h2>Seu painel de hoje</h2><p>${apps.length} candidatura(s), ${openTasks.length} tarefa(s) aberta(s) e ${emails.length} correspondência(s) acompanhada(s).</p></div>
+          <div class="summary-grid">
+            <button class="summary-card" data-nav="apps"><strong>${apps.filter(app => app.stage !== 'encerrada').length}</strong><span>Candidaturas ativas</span></button>
+            <button class="summary-card" data-nav="tasks"><strong>${openTasks.length}</strong><span>Tarefas abertas</span></button>
+            <button class="summary-card" data-nav="email"><strong>${emails.length}</strong><span>Correspondências</span></button>
+            <button class="summary-card" data-nav="tasks"><strong>${overdue}</strong><span>Atrasadas</span></button>
+          </div>
+          <div class="priority-bars">${priorities.map(priority => { const count = apps.filter(app => app.priority === priority && app.stage !== 'encerrada').length; const width = apps.length ? Math.max(5, Math.round(count / apps.length * 100)) : 0; return `<button data-nav="apps" class="priority-line"><span>${labels[priority]}</span><i><b style="width:${width}%"></b></i><em>${count}</em></button>`; }).join('')}</div>
         </div>
-
-        <button class="theatre-arrow theatre-arrow-next" data-card="next" aria-label="Próximo card">›</button>
       </section>
     </div>
   `;
-
-  const go = delta => {
-    render.index = (activeCardIndex + delta + cards.length) % cards.length;
-    render(root);
-  };
-
-  root.querySelectorAll('[data-card="prev"]').forEach(el => el.addEventListener('click', () => go(-1)));
-  root.querySelectorAll('[data-card="next"]').forEach(el => el.addEventListener('click', () => go(1)));
 
   root.querySelectorAll('.cal-day-btn').forEach(btn => {
     btn.addEventListener('click', () => {

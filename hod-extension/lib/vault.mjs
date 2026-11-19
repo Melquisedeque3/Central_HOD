@@ -14,6 +14,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { parseFrontmatter, buildNote } from './frontmatter.mjs';
+import { AuditLog } from './audit.mjs';
+import { applicationFingerprint, validateRecord } from './validation.mjs';
 
 export const TYPES = {
   application: { dir: 'Candidaturas', prefix: 'app' },
@@ -25,6 +27,9 @@ export const TYPES = {
 
 const META_DIR = '.hod';
 const SAFE_NAME = /[\\/:*?"<>|#^[\]]/g;
+const RAW_NOTE_DIRS = new Set(['Candidaturas', 'Tarefas', 'Guidelines', 'Rotina', 'inbox']);
+const INBOX_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.csv', '.json']);
+const WORK_DIRS = new Set(['Insights', 'Relatorios', 'Semanal', 'Mensal']);
 
 function slug(value, fallback = 'sem-titulo') {
   const s = String(value ?? '')
@@ -83,10 +88,18 @@ export class Vault {
 
   async init() {
     await mkdirp(this.root);
+    // macOS pode expor o mesmo diretório por /var e /private/var. Trabalhar
+    // sempre com a raiz canônica evita rejeitar caminhos filhos legítimos.
+    this.root = await fs.realpath(this.root);
+    this.metaDir = path.join(this.root, META_DIR);
     for (const cfg of Object.values(TYPES)) {
       await mkdirp(cfg.dir === '.' ? this.root : path.join(this.root, cfg.dir));
     }
     await mkdirp(this.metaDir);
+    await mkdirp(path.join(this.root, 'inbox'));
+    for (const dir of WORK_DIRS) await mkdirp(path.join(this.root, dir));
+    this.realRoot = this.root;
+    this.audit = new AuditLog(this.root);
   }
 
   /* ============ leitura ============ */
@@ -114,6 +127,12 @@ export class Vault {
           }
           const id = String(data.id || '').trim();
           if (!id || seenIds.has(id)) { errors.push(`${entry.name}: id ausente ou duplicado`); continue; }
+          // Notas editadas fora do HOD continuam sendo fonte de verdade, mas
+          // somente entram no estado derivado depois de passar pelo mesmo
+          // contrato de schema da API. Arquivo corrompido fica visível em
+          // `errors`, sem propagar dados incompletos à interface.
+          const normalized = stripMeta(data);
+          validateRecord(type, normalized);
           seenIds.add(id);
           const rel = path.relative(this.root, full).split(path.sep).join('/');
           const cleanBody = body.replace(/^\n+/, '').trimEnd();
@@ -127,7 +146,7 @@ export class Vault {
             type,
             path: rel,
             mtime: (await fs.stat(full)).mtimeMs,
-            data: stripMeta(data),
+            data: normalized,
             body: resolvedBody,
           });
         } catch (err) {
@@ -196,13 +215,23 @@ export class Vault {
   }
 
   /* ============ escrita ============ */
-  async put(type, data) {
+  async put(type, data, { actor = 'SYSTEM', origin = 'api' } = {}) {
     const cfg = TYPES[type];
     if (!cfg) throw new Error(`Tipo desconhecido: ${type}`);
     if (!data.id) throw new Error('Registro sem id.');
 
     const index = await this.scan(true);
     const current = index.records.find(r => r.id === data.id && r.type === type);
+    if (type === 'application') {
+      const fingerprint = applicationFingerprint(data);
+      const duplicate = index.records.find(record => record.type === 'application' && record.id !== data.id && applicationFingerprint(record.data) === fingerprint);
+      if (duplicate) {
+        const err = new Error('Candidatura duplicada: já existe um registro com empresa, função, URL e data equivalentes.');
+        err.status = 409;
+        err.current = duplicate;
+        throw err;
+      }
+    }
 
     const dirRel = cfg.dir === '.' ? '' : `${cfg.dir}/`;
     const desired = path.join(this.root, dirRel + baseName(type, data) + '.md');
@@ -258,10 +287,12 @@ export class Vault {
     }
 
     this._cache = null;
-    return { path: path.relative(this.root, target).split(path.sep).join('/'), data: { ...data, updatedAt: now } };
+    const saved = { path: path.relative(this.root, target).split(path.sep).join('/'), data: { ...data, updatedAt: now } };
+    await this.audit.record({ actor, origin, action: current ? 'UPDATE' : 'CREATE', entity: type, entityId: data.id, before: current?.data || null, after: saved.data });
+    return saved;
   }
 
-  async remove(type, id) {
+  async remove(type, id, { actor = 'SYSTEM', origin = 'api' } = {}) {
     const index = await this.scan(true);
     const current = index.records.find(r => r.id === id && r.type === type);
     if (!current) {
@@ -285,6 +316,7 @@ export class Vault {
     tombstones[id] = { id, type, path: current.path, deletedAt: new Date().toISOString() };
     await this._writeTombstones(tombstones);
     this._cache = null;
+    await this.audit.record({ actor, origin, action: 'DELETE', entity: type, entityId: id, before: current.data, after: null });
     return { id, deleted: true };
   }
 
@@ -338,11 +370,12 @@ export class Vault {
   }
 
   /* dados não-noteados (e-mails analisados, calendário) */
-  async putBag(patch) {
+  async putBag(patch, { actor = 'SYSTEM', origin = 'api' } = {}) {
     const bag = await this._readJson('bag.json', {});
     const next = { ...bag, ...patch, updatedAt: new Date().toISOString() };
     await this._writeJson('bag.json', next);
     this._cache = null;
+    await this.audit.record({ actor, origin, action: 'UPDATE', entity: 'bag', entityId: 'bag', before: bag, after: next });
     return next;
   }
 
@@ -369,19 +402,61 @@ export class Vault {
   }
 
   async readNote(relPath) {
-    const safe = path.normalize(relPath).replace(/^(\.\.(\/|\\|$))+/, '');
-    const full = path.join(this.root, safe);
-    if (!full.startsWith(this.root)) throw new Error('Caminho inválido.');
-    return fs.readFile(full, 'utf8');
+    const { safe, full } = this._rawNotePath(relPath);
+    const resolved = await fs.realpath(full);
+    this._assertInsideRoot(resolved);
+    return fs.readFile(resolved, 'utf8');
   }
 
   async writeNote(relPath, content) {
-    const safe = path.normalize(relPath).replace(/^(\.\.(\/|\\|$))+/, '');
-    const full = path.join(this.root, safe);
-    if (!full.startsWith(this.root)) throw new Error('Caminho inválido.');
+    const { safe, full } = this._rawNotePath(relPath);
+    const parent = await fs.realpath(path.dirname(full));
+    this._assertInsideRoot(parent);
     await writeFileAtomic(full, content);
     this._cache = null;
     return safe;
+  }
+
+  async writeWorkDocument(directory, { title, content, type = 'analysis', relatedId = '' }, { actor = 'WORK', origin = 'work' } = {}) {
+    if (!WORK_DIRS.has(directory)) throw Object.assign(new Error('Diretório HOD não autorizado.'), { status: 403 });
+    if (typeof title !== 'string' || !title.trim() || typeof content !== 'string' || !content.trim() || content.length > 120000) {
+      throw Object.assign(new Error('Documento de Work inválido.'), { status: 400 });
+    }
+    const dir = path.join(this.root, directory);
+    this._assertInsideRoot(await fs.realpath(dir));
+    const id = `work_${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`;
+    const file = path.join(dir, `${slug(title, 'Insight')} — ${id}.md`);
+    await writeFileAtomic(file, buildNote({ hod_type: 'work_document', id, type, related_id: relatedId, created_at: new Date().toISOString(), managed_by: 'hod' }, content));
+    const rel = path.relative(this.root, file).split(path.sep).join('/');
+    await this.audit.record({ actor, origin, action: 'WRITE_DOCUMENT', entity: 'work_document', entityId: id, after: { directory, path: rel, type, relatedId } });
+    return { id, path: rel };
+  }
+
+  _rawNotePath(relPath) {
+    if (typeof relPath !== 'string' || relPath.includes('\0') || path.isAbsolute(relPath)) {
+      throw Object.assign(new Error('Caminho inválido.'), { status: 400 });
+    }
+    const safe = path.posix.normalize(relPath.replace(/\\/g, '/'));
+    const parts = safe.split('/');
+    const [dir, name] = parts;
+    if (parts.length !== 2 || !RAW_NOTE_DIRS.has(dir) || !name || name.startsWith('.')) {
+      throw Object.assign(new Error('Caminho não autorizado.'), { status: 403 });
+    }
+    const extension = path.extname(name).toLowerCase();
+    if ((dir === 'inbox' && !INBOX_EXTENSIONS.has(extension)) || (dir !== 'inbox' && extension !== '.md')) {
+      throw Object.assign(new Error('Extensão não autorizada.'), { status: 400 });
+    }
+    const full = path.resolve(this.root, ...parts);
+    this._assertInsideRoot(full);
+    return { safe, full };
+  }
+
+  _assertInsideRoot(target) {
+    const root = this.realRoot || this.root;
+    const relative = path.relative(root, target);
+    if (relative === '' || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      throw Object.assign(new Error('Caminho inválido.'), { status: 403 });
+    }
   }
 }
 

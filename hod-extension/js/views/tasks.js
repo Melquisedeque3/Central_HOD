@@ -98,10 +98,10 @@ export function render(root) {
                   ${cards.map(t => {
                     const linkedApp = t.appId ? getApplication(t.appId) : null;
                     return `
-                      <article class="kcard" tabindex="0" draggable="true" data-id="${t.id}">
+                      <article class="kcard" tabindex="0" draggable="true" data-id="${esc(t.id)}">
                         <div class="kcard-body" style="text-align: left; width: 100%;">
                           <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;">
-                            <button class="task-check" data-action="toggle-task" data-id="${t.id}" aria-label="Concluir" style="cursor: pointer; margin-top: 2px;"><span class="box"></span></button>
+                            <button class="task-check" data-action="toggle-task" data-id="${esc(t.id)}" aria-label="Concluir" style="cursor: pointer; margin-top: 2px;"><span class="box"></span></button>
                             <div style="flex: 1; min-width: 0;">
                               <div style="font-weight: 600; font-size: 13.5px; color: var(--ink); line-height: 1.35;">${esc(t.title)}</div>
                               ${linkedApp ? `<small class="muted" style="display: block; margin-top: 3px; font-size: 11.5px;">🏢 ${esc(linkedApp.company)}</small>` : ''}
@@ -110,8 +110,8 @@ export function render(root) {
                           <div class="kmeta" style="display: flex; gap: 6px; align-items: center; justify-content: space-between; margin-top: 6px;">
                             ${t.dueAt ? deadlineChip(t.dueAt) : '<span class="muted small">—</span>'}
                             <div style="display: flex; gap: 6px;">
-                              <button class="icon-btn" data-action="edit-task" data-id="${t.id}" title="Editar tarefa">✎</button>
-                              <button class="icon-btn danger" data-action="del-task" data-id="${t.id}" title="Excluir tarefa">✕</button>
+                              <button class="icon-btn" data-action="edit-task" data-id="${esc(t.id)}" title="Editar tarefa">✎</button>
+                              <button class="icon-btn danger" data-action="del-task" data-id="${esc(t.id)}" title="Excluir tarefa">✕</button>
                             </div>
                           </div>
                         </div>

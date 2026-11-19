@@ -6,7 +6,7 @@
    • tradução deixa de ser botão morto: vira ação do agente Hermes
    • tutor contextual usa o Hermes com a guideline como contexto
    ============================================================ */
-import { esc, emptyState, miniMarkdown, relativeTime, toast, openModal, field, textarea, select, confirmAction } from '../ui.js';
+import { esc, safeExternalUrl, emptyState, miniMarkdown, relativeTime, toast, openModal, field, textarea, select, confirmAction } from '../ui.js';
 import { getState, getGuideline, updateGuideline, deleteGuideline, createGuideline } from '../store.js';
 import { uiState } from '../state.js';
 import * as api from '../api.js';
@@ -35,7 +35,7 @@ export function render(root, params) {
         <input id="guideSearch" data-filter="study.q" value="${esc(f.q)}" placeholder="Buscar em títulos e conteúdo…" aria-label="Buscar guidelines">
         <select data-filter="study.app" aria-label="Filtrar por candidatura">
           <option value="">Todas as candidaturas</option>
-          ${state.applications.map(a => `<option value="${a.id}" ${f.app === a.id ? 'selected' : ''}>${esc(a.company)}</option>`).join('')}
+          ${state.applications.map(a => `<option value="${esc(a.id)}" ${f.app === a.id ? 'selected' : ''}>${esc(a.company)}</option>`).join('')}
         </select>
       </div>
       <div class="toolbar-right">
@@ -54,7 +54,7 @@ export function render(root, params) {
         <aside class="guide-side">
           ${guides.length ? guides.map(g => {
             const app = state.applications.find(a => a.id === g.appId);
-            return `<button class="guide-item ${selected?.id === g.id ? 'active' : ''}" data-nav="#/study?g=${g.id}">
+            return `<button class="guide-item ${selected?.id === g.id ? 'active' : ''}" data-nav="#/study?g=${encodeURIComponent(g.id)}">
               <strong>${esc(g.title)}</strong>
               <small class="muted">${esc(app?.company || 'Sem vínculo')} · ${esc(g.language || '—')} · ${relativeTime(g.updatedAt)}</small>
             </button>`;
@@ -67,14 +67,14 @@ export function render(root, params) {
               <div>
                 <h3>${esc(selected.title)}</h3>
                 <p class="muted small">
-                  ${linkedApp ? `<a class="link" href="#/apps/${linkedApp.id}">${esc(linkedApp.company)}${linkedApp.role ? ' — ' + esc(linkedApp.role) : ''}</a> · ` : ''}
+                  ${linkedApp ? `<a class="link" href="#/apps/${encodeURIComponent(linkedApp.id)}">${esc(linkedApp.company)}${linkedApp.role ? ' — ' + esc(linkedApp.role) : ''}</a> · ` : ''}
                   ${esc(selected.language || 'idioma não informado')}
-                  ${selected.sourceUrl ? ` · <a class="link" href="${esc(selected.sourceUrl)}" target="_blank" rel="noopener">fonte ↗</a>` : ''}
+                  ${safeExternalUrl(selected.sourceUrl) ? ` · <a class="link" href="${safeExternalUrl(selected.sourceUrl)}" target="_blank" rel="noopener">fonte ↗</a>` : ''}
                 </p>
               </div>
               <div class="head-actions">
-                <button class="btn ghost sm" data-action="edit-guide" data-id="${selected.id}">Editar</button>
-                <button class="icon-btn danger" data-action="del-guide" data-id="${selected.id}" aria-label="Excluir guideline">✕</button>
+                <button class="btn ghost sm" data-action="edit-guide" data-id="${esc(selected.id)}">Editar</button>
+                <button class="icon-btn danger" data-action="del-guide" data-id="${esc(selected.id)}" aria-label="Excluir guideline">✕</button>
               </div>
             </header>
 

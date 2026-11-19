@@ -6,7 +6,7 @@
    o servidor local, o vault Obsidian e o Hermes Agent — e as
    credenciais ficam em `.hod-config.json`, nunca no navegador.
    ============================================================ */
-import { esc, toast, confirmAction, field, openModal } from '../ui.js';
+import { esc, toast, confirmAction, field } from '../ui.js';
 import { getState, stats, exportJSON, importJSON, resetAll, reload } from '../store.js';
 import * as api from '../api.js';
 
@@ -15,7 +15,6 @@ export const meta = { kicker: 'Ajustes', title: 'Conexões e dados' };
 export function render(root) {
   const state = getState();
   const conn = state.connections || {};
-  const o = conn.obsidian || {};
   const h = conn.hermes || {};
   const s = stats();
   const vaultMode = state.sync.mode === 'vault';
@@ -93,30 +92,13 @@ export function render(root) {
         <header class="card-head">
           <div style="display:flex;align-items:center;gap:8px;">
             <span style="font-size:18px;">🗄</span>
-            <h3>Obsidian Local REST API</h3>
+            <h3>Vault Obsidian</h3>
           </div>
-          <span class="chip tiny" style="background:${o.hasKey ? 'rgba(34,197,94,.14)' : 'rgba(255,255,255,.06)'};color:${o.hasKey ? '#4ade80' : 'var(--muted-2)'};">
-            ${o.hasKey ? 'com chave' : 'sem chave'}
-          </span>
         </header>
         <p class="muted small">
-          Opcional. O HOD já grava direto nos arquivos <code>.md</code> do vault pelo servidor local.
-          Configure aqui apenas se quiser abrir notas no Obsidian ou usar o plugin REST.
+          O HOD grava diretamente os arquivos <code>.md</code> autorizados no vault. O proxy REST genérico
+          foi removido por segurança; abra esta pasta normalmente no Obsidian para acompanhar as alterações.
         </p>
-        <form id="obsidianForm" class="stack">
-          <label class="field inline">
-            <input type="checkbox" name="enabled" ${o.enabled ? 'checked' : ''}>
-            <span>Ativar integração REST</span>
-          </label>
-          ${field('URL do Local REST API', 'url', o.url || 'http://127.0.0.1:27123', { placeholder: 'http://127.0.0.1:27123' })}
-          ${field('Chave da API', 'key', '', { type: 'password', placeholder: o.hasKey ? '•••••••• (já definida)' : 'cole a chave do plugin' })}
-          ${field('Subpasta no vault', 'folder', o.folder || '', { placeholder: '(raiz do vault)' })}
-          <div class="form-actions wrap">
-            <button type="submit" class="btn primary">Salvar</button>
-            <button type="button" class="btn ghost" id="testObsidian">Testar conexão</button>
-          </div>
-          <p class="muted small" id="obsidianStatus" role="status"></p>
-        </form>
       </section>
 
       <!-- ============ DADOS ============ -->
@@ -155,18 +137,15 @@ export function render(root) {
         </div>
       </section>
 
-      <!-- ============ SOBRE / INTEGRAÇÃO ============ -->
+      <!-- ============ OPERAÇÃO ============ -->
       <section class="card" style="grid-column: 1 / -1;">
-        <header class="card-head">
-          <h3>Sobre e integração</h3>
-          <button class="btn ghost sm" id="showIntegration">Como integrar o Hermes</button>
-        </header>
+        <header class="card-head"><h3>Operação</h3></header>
         <p class="muted small">
-          HOD 4.0 — página local, sem extensão, sem build e sem dependências.<br>
-          Obsidian é o dono dos dados; o índice é derivado. O Hermes é o cérebro operacional.<br><br>
+          O vault Markdown é a fonte de verdade. Reindexe somente após alterar notas fora do HOD;
+          use a tela de Rotina para editar blocos e o botão ✨ Agente para abrir a conversa.<br><br>
           Atalhos: <code>g h</code> início · <code>g a</code> candidaturas · <code>g t</code> tarefas ·
           <code>g m</code> email · <code>g e</code> estudo · <code>g r</code> rotina · <code>g k</code> métricas ·
-          <code>g i</code> agente · <code>g s</code> ajustes.
+          <code>g s</code> ajustes.
         </p>
       </section>
     </div>
@@ -254,44 +233,6 @@ export function render(root) {
     }
   });
 
-  /* ---------- Obsidian ---------- */
-  const obsStatus = root.querySelector('#obsidianStatus');
-
-  root.querySelector('#obsidianForm')?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const form = new FormData(e.target);
-    const patch = {
-      obsidian: {
-        enabled: form.get('enabled') === 'on',
-        url: String(form.get('url') || '').trim(),
-        folder: String(form.get('folder') || '').trim(),
-      },
-    };
-    const key = String(form.get('key') || '').trim();
-    if (key) patch.obsidian.key = key;
-    try {
-      await api.saveConfig(patch);
-      toast('Configuração do Obsidian salva');
-      await reload().catch(() => {});
-      render(root);
-    } catch (err) {
-      toast(`Falha ao salvar: ${err.message}`, 'error');
-    }
-  });
-
-  root.querySelector('#testObsidian')?.addEventListener('click', async () => {
-    if (!obsStatus) return;
-    obsStatus.textContent = 'Testando…';
-    try {
-      await api.obsidianTest();
-      obsStatus.textContent = 'Conectado ao Obsidian ✔';
-      toast('Obsidian acessível');
-    } catch (err) {
-      obsStatus.textContent = `Falhou: ${err.message}`;
-      toast('Obsidian não respondeu', 'error');
-    }
-  });
-
   /* ---------- dados ---------- */
   root.querySelector('#exportData')?.addEventListener('click', async () => {
     const text = await exportJSON();
@@ -324,40 +265,6 @@ export function render(root) {
     }
   });
 
-  /* ---------- integração ---------- */
-  root.querySelector('#showIntegration')?.addEventListener('click', () => {
-    openModal({
-      title: 'Integrar Hermes + Obsidian',
-      wide: true,
-      submitLabel: 'Fechar',
-      cancelLabel: 'Fechar',
-      body: `
-        <div class="markdown" style="font-size:13px;line-height:1.7;">
-          <h3>1. Apontar o vault</h3>
-          <p>Rode o servidor apontando para o vault que já existe no outro SSD:</p>
-          <pre class="md-pre"><code>HOD_VAULT="/caminho/do/vault" node server.mjs</code></pre>
-          <p>Ou copie o vault para <code>./vault</code> e rode <code>node server.mjs</code>.</p>
-
-          <h3>2. Subir o Hermes com o API Server</h3>
-          <pre class="md-pre"><code># ~/.hermes/.env
-API_SERVER_ENABLED=true
-API_SERVER_KEY=uma-chave-longa
-API_SERVER_CORS_ORIGINS=http://127.0.0.1:8420</code></pre>
-
-          <h3>3. Conectar na aba Ajustes</h3>
-          <p>URL <code>http://127.0.0.1:8642</code>, a mesma chave e o modelo desejado.
-          A página fala com o Hermes pelo servidor local — a chave nunca entra no navegador.</p>
-
-          <h3>4. Deixar o Hermes ler o vault</h3>
-          <p>O Hermes já lê arquivos locais. Aponte as skills dele para a mesma pasta do vault.
-          O contrato das notas está no README deste repositório (seção <b>Contrato do vault</b>).</p>
-
-          <h3>5. Verificar</h3>
-          <p>Ajustes → <i>Testar conexão</i> no Hermes, depois aba <b>Agente</b> → <i>Ações</i> → <i>Briefing do dia</i>.</p>
-        </div>
-      `,
-    });
-  });
 }
 
 function fmtTotal(slots) {

@@ -82,8 +82,8 @@ export function render(root) {
                     </div>
                   </div>
                   <div class="row-actions" style="display: flex; gap: 6px;">
-                    <button class="icon-btn" data-action="edit-slot" data-id="${slot.id}" title="Editar bloco">✎</button>
-                    <button class="icon-btn danger" data-action="del-slot" data-id="${slot.id}" title="Excluir bloco">✕</button>
+                    <button class="icon-btn" data-action="edit-slot" data-id="${esc(slot.id)}" title="Editar bloco">✎</button>
+                    <button class="icon-btn danger" data-action="del-slot" data-id="${esc(slot.id)}" title="Excluir bloco">✕</button>
                   </div>
                 </div>
               `;

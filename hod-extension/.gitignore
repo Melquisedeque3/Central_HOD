@@ -10,6 +10,7 @@ vault/
 
 # credenciais locais (Hermes / Obsidian)
 .hod-config.json
+.hod-auth.json
 
 # ferramentas e arquivos locais de pesquisa
 .tools/
