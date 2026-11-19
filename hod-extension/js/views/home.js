@@ -151,7 +151,15 @@ function buildCards(state) {
   return cards;
 }
 
-export function render(root) {
+const AREAS = [
+  { id: 'vagas', title: 'Vagas e candidaturas', desc: 'Oportunidades, prioridades e processos em andamento.', bg: 'theme-1/projects.webp', items: [['Candidaturas', 'apps'], ['Tarefas de candidatura', 'tasks'], ['Correspondências', 'email']] },
+  { id: 'projetos', title: 'Projetos e freelas', desc: 'Organize oportunidades de projeto e próximas ações.', bg: 'theme-1/workflows.webp', items: [['Oportunidades coletadas', 'apps'], ['Tarefas abertas', 'tasks'], ['Métricas', 'metrics']] },
+  { id: 'correspondencias', title: 'Correspondências', desc: 'Resumos por empresa e pendências de resposta.', bg: 'theme-1/feed.webp', items: [['Caixa de acompanhamento', 'email'], ['Follow-ups', 'tasks'], ['Candidaturas', 'apps']] },
+  { id: 'guidelines', title: 'Guidelines', desc: 'Biblioteca organizada por empresa e projeto.', bg: 'theme-1/content.webp', items: [['Biblioteca', 'study'], ['Importar documento', 'study'], ['Rotina de estudo', 'routine']] },
+  { id: 'rotina', title: 'Rotina', desc: 'Planeje o dia, conclua tarefas e acompanhe o ritmo.', bg: 'theme-1/today.webp', items: [['Rotina diária', 'routine'], ['Tarefas', 'tasks'], ['Desempenho', 'metrics']] },
+];
+
+export function render(root, params = {}) {
   const state = getState();
   const s = stats();
   const week = getWeekDays();
@@ -162,6 +170,20 @@ export function render(root) {
   const priorities = ['urgente', 'importante', 'normal', 'baixa'];
   const labels = { urgente: 'Urgente', importante: 'Importante', normal: 'Normal', baixa: 'Baixa' };
   const openTasks = tasks.filter(task => task.status !== 'done');
+
+  const area = AREAS.find(item => item.id === params.id);
+  const hierarchy = area ? `
+    <section class="hub-area" style="background-image:url('${area.bg}')">
+      <div class="hub-area-shade"></div><div class="hub-area-content">
+        <button class="hub-back" data-nav="home">← Todas as áreas</button>
+        <span>ÁREA OPERACIONAL</span><h2>${esc(area.title)}</h2><p>${esc(area.desc)}</p>
+        <div class="hub-subcards">${area.items.map(([label, nav], index) => `<button data-nav="${nav}" class="hub-subcard"><small>SUBÁREA ${String(index + 1).padStart(2, '0')}</small><strong>${esc(label)}</strong><i>→</i></button>`).join('')}</div>
+      </div>
+    </section>` : `
+    <section class="workspace-theatre" aria-label="Áreas operacionais">
+      <div class="theatre-rail">${AREAS.map((item, index) => `<button class="theatre-card ${index === 0 ? 'is-active' : index === 1 ? 'slot-1' : 'slot-n1'}" data-nav="hub/${item.id}" style="background-image:url('${item.bg}')"><span class="card-backdrop-gradient"></span><span class="feed-cover-content"><span class="feed-category">ÁREA ${String(index + 1).padStart(2, '0')}</span><strong class="feed-headline">${esc(item.title)}</strong><span class="feed-summary">${esc(item.desc)}</span><span class="feed-bottom-row"><b class="feed-action-btn">Explorar <em>→</em></b></span></span></button>`).join('')}</div>
+      <p class="hub-hint">Selecione uma área para revelar suas subáreas.</p>
+    </section>`;
 
   root.innerHTML = `
     <div class="home-os-stage">
@@ -200,6 +222,7 @@ export function render(root) {
           <div class="priority-bars">${priorities.map(priority => { const count = apps.filter(app => app.priority === priority && app.stage !== 'encerrada').length; const width = apps.length ? Math.max(5, Math.round(count / apps.length * 100)) : 0; return `<button data-nav="apps" class="priority-line"><span>${labels[priority]}</span><i><b style="width:${width}%"></b></i><em>${count}</em></button>`; }).join('')}</div>
         </div>
       </section>
+      ${hierarchy}
     </div>
   `;
 

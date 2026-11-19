@@ -7,6 +7,7 @@ vault/
 
 # metadados derivados do vault
 .hod/
+.hod-backups/
 
 # credenciais locais (Hermes / Obsidian)
 .hod-config.json

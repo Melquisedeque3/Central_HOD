@@ -27,6 +27,7 @@ import * as settings from './views/settings.js';
 const ROUTES = [
   { pattern: /^\/?$/, view: home, name: 'home' },
   { pattern: /^\/home$/, view: home, name: 'home' },
+  { pattern: /^\/hub\/([^/]+)$/, view: home, name: 'home' },
   { pattern: /^\/apps$/, view: apps, name: 'apps' },
   { pattern: /^\/apps\/([^/]+)$/, view: appDetail, name: 'apps' },
   { pattern: /^\/tasks$/, view: tasks, name: 'tasks' },
