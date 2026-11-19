@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.centralhod.collector</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string>
+    <string>__HOD_ROOT__/collectors/lever_collector.py</string>
+    <string>--commit</string>
+  </array>
+  <key>StartInterval</key><integer>21600</integer>
+  <key>EnvironmentVariables</key><dict>
+    <key>HOD_API_URL</key><string>http://127.0.0.1:8420</string>
+  </dict>
+  <key>StandardOutPath</key><string>__HOD_LOG_DIR__/collector.log</string>
+  <key>StandardErrorPath</key><string>__HOD_LOG_DIR__/collector.error.log</string>
+  <key>ProcessType</key><string>Background</string>
+</dict></plist>

@@ -23,7 +23,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Vault, TYPES } from './lib/vault.mjs';
 import { canAccess, isAllowedOrigin, loadAuth, validateLoopbackUrl } from './lib/security.mjs';
-import { validateRecord } from './lib/validation.mjs';
+import { opportunityFingerprint, validateRecord } from './lib/validation.mjs';
 import { BackupManager } from './lib/backups.mjs';
 import { applyWorkAction, buildWorkContext } from './lib/work.mjs';
 
@@ -304,6 +304,13 @@ async function handleAPI(req, res, url) {
     data.priority = data.priority || 'normal';
     data.collectedAt = data.collectedAt || new Date().toISOString();
     validateRecord('opportunity', data);
+    // Coletores só criam itens novos. Repetir um anúncio não deve nem alterar
+    // collectedAt, nem gerar um novo evento de auditoria: é idempotência real,
+    // não apenas ausência de uma segunda nota.
+    const existing = (await vault.scan()).records.find(record => record.type === 'opportunity' && record.id === data.id);
+    if (existing && opportunityFingerprint(existing.data) === opportunityFingerprint(data)) {
+      return sendError(res, 409, 'Oportunidade já coletada.');
+    }
     const saved = await vault.put('opportunity', data, { actor: auditActor, origin: actor?.name === 'collector' ? 'collector' : 'api' });
     return sendJSON(res, 201, { ok: true, ...saved });
   }
