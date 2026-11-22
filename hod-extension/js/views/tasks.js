@@ -1,13 +1,19 @@
 /* ============================================================
-   views/tasks.js — Tarefas: Kanban por Prioridade + Lista
-   Arrastar um card entre colunas muda a prioridade da tarefa.
+   views/tasks.js — Tarefas: Kanban por status + Lista
+   Arrastar um card entre colunas muda o status da tarefa.
    ============================================================ */
 import { esc, dueInfo, emptyState, toDateInput } from '../ui.js';
 import { getState, PRIORITIES, getApplication, updateTask } from '../store.js';
 import { uiState } from '../state.js';
 import { taskRow, deadlineChip } from '../components.js';
 
-export const meta = { kicker: 'Tarefas', title: 'Tarefas por Prioridade' };
+export const meta = { kicker: 'Tarefas', title: 'Tarefas' };
+
+const KANBAN_COLUMNS = [
+  { id: 'todo', label: 'Não iniciadas', color: 'var(--muted-2)' },
+  { id: 'doing', label: 'Em aberto / fazendo', color: 'var(--blue)' },
+  { id: 'done', label: 'Concluídas', color: 'var(--green)' },
+];
 
 export function render(root) {
   const state = getState();
@@ -42,10 +48,12 @@ export function render(root) {
       <div class="task-list">${list.map(t => taskRow(t)).join('')}</div>
     </section>` : '';
 
-  const kanbanTasks = allTasks.filter(t => t.status !== 'done' &&
+  // O kanban sempre mostra as três etapas; o filtro de status continua
+  // servindo à lista abaixo, sem esconder uma coluna inteira do quadro.
+  const kanbanTasks = allTasks.filter(t =>
     (!q || `${t.title} ${t.notes}`.toLowerCase().includes(q)) &&
-    (!f.app || t.appId === f.app) &&
-    f.status !== 'done');
+    (!f.priority || t.priority === f.priority) &&
+    (!f.app || t.appId === f.app));
 
   root.innerHTML = `
     <div class="toolbar">
@@ -77,38 +85,44 @@ export function render(root) {
       <div style="margin-bottom: 34px;">
         <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px;">
           <h3 style="font-size: 15px; font-weight: 500; letter-spacing: 0.02em; color: var(--ink);">
-            Visão Kanban <span style="font-size: 13px; color: var(--muted-2); font-weight: 400;">(arraste um card para mudar a prioridade)</span>
+            Visão Kanban <span style="font-size: 13px; color: var(--muted-2); font-weight: 400;">(arraste um card para mudar a situação)</span>
           </h3>
         </div>
 
         <div class="kanban" role="list" style="display: flex; gap: 16px; overflow-x: auto; padding-bottom: 14px;">
-          ${PRIORITIES.map(p => {
-            const cards = kanbanTasks.filter(t => (t.priority || 'normal') === p.id);
+          ${KANBAN_COLUMNS.map(column => {
+            const cards = kanbanTasks.filter(t => (t.status || 'todo') === column.id);
             return `
-              <section class="kcol" data-priority="${p.id}" style="min-width: 260px; max-width: 300px; flex: 1;" role="listitem" aria-label="${esc(p.name)}">
+              <section class="kcol" data-status="${column.id}" style="min-width: 260px; max-width: 300px; flex: 1;" role="listitem" aria-label="${esc(column.label)}">
                 <header class="kcol-head" style="display: flex; align-items: center; justify-content: space-between;">
                   <div style="display: flex; align-items: center; gap: 8px;">
-                    <span class="kdot" style="background: ${p.color};"></span>
-                    <h3 style="font-size: 14px; font-weight: 600;">${esc(p.name)}</h3>
+                    <span class="kdot" style="background: ${column.color};"></span>
+                    <h3 style="font-size: 14px; font-weight: 600;">${esc(column.label)}</h3>
                   </div>
                   <span class="kcount">${cards.length}</span>
                 </header>
 
-                <div class="kcards" data-drop-priority="${p.id}" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+                <div class="kcards" data-drop-status="${column.id}" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
                   ${cards.map(t => {
                     const linkedApp = t.appId ? getApplication(t.appId) : null;
+                    const appLabel = linkedApp ? linkedApp.company : t.appLabel;
+                    const priority = PRIORITIES.find(item => item.id === t.priority) || PRIORITIES[2];
+                    const done = t.status === 'done';
                     return `
                       <article class="kcard" tabindex="0" draggable="true" data-id="${esc(t.id)}">
                         <div class="kcard-body" style="text-align: left; width: 100%;">
                           <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;">
-                            <button class="task-check" data-action="toggle-task" data-id="${esc(t.id)}" aria-label="Concluir" style="cursor: pointer; margin-top: 2px;"><span class="box"></span></button>
+                            <button type="button" class="task-check" data-action="toggle-task" data-id="${esc(t.id)}" aria-label="${done ? 'Reabrir tarefa' : 'Concluir tarefa'}" title="${done ? 'Reabrir tarefa' : 'Marcar como concluída'}" style="cursor: pointer; margin-top: 2px;"><span class="box">${done ? '✓' : ''}</span></button>
                             <div style="flex: 1; min-width: 0;">
                               <div style="font-weight: 600; font-size: 13.5px; color: var(--ink); line-height: 1.35;">${esc(t.title)}</div>
-                              ${linkedApp ? `<small class="muted" style="display: block; margin-top: 3px; font-size: 11.5px;">🏢 ${esc(linkedApp.company)}</small>` : ''}
+                              ${appLabel ? `<small class="muted" style="display: block; margin-top: 3px; font-size: 11.5px;">🏢 ${esc(appLabel)}</small>` : ''}
                             </div>
                           </div>
                           <div class="kmeta" style="display: flex; gap: 6px; align-items: center; justify-content: space-between; margin-top: 6px;">
-                            ${t.dueAt ? deadlineChip(t.dueAt) : '<span class="muted small">—</span>'}
+                            <div style="display:flex;gap:6px;align-items:center;min-width:0;">
+                              <span class="chip tiny" style="border-color:${priority.color};color:${priority.color};">${esc(priority.name)}</span>
+                              ${t.dueAt ? deadlineChip(t.dueAt) : '<span class="chip tiny subtle">Sem prazo</span>'}
+                            </div>
                             <div style="display: flex; gap: 6px;">
                               <button class="icon-btn" data-action="edit-task" data-id="${esc(t.id)}" title="Editar tarefa">✎</button>
                               <button class="icon-btn danger" data-action="del-task" data-id="${esc(t.id)}" title="Excluir tarefa">✕</button>
@@ -118,7 +132,7 @@ export function render(root) {
                       </article>
                     `;
                   }).join('')}
-                  <button class="kadd" data-action="new-task" data-priority="${p.id}" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px dashed var(--line); background: transparent; color: var(--muted-2); cursor: pointer; font-size: 12.5px;">+ adicionar ${esc(p.name.toLowerCase())}</button>
+                  ${column.id !== 'done' ? `<button class="kadd" data-action="new-task" data-status="${column.id}" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px dashed var(--line); background: transparent; color: var(--muted-2); cursor: pointer; font-size: 12.5px;">+ adicionar</button>` : ''}
                 </div>
               </section>
             `;
@@ -163,7 +177,7 @@ function wirePriorityDrag(root) {
     });
   });
 
-  root.querySelectorAll('[data-drop-priority]').forEach(zone => {
+  root.querySelectorAll('[data-drop-status]').forEach(zone => {
     zone.addEventListener('dragover', e => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -177,11 +191,11 @@ function wirePriorityDrag(root) {
       e.preventDefault();
       zone.closest('.kcol')?.classList.remove('dragover');
       const id = draggingId || e.dataTransfer.getData('text/plain');
-      const priority = zone.dataset.dropPriority;
-      if (!id || !priority) return;
+      const status = zone.dataset.dropStatus;
+      if (!id || !status) return;
       const task = getState().tasks.find(t => t.id === id);
-      if (!task || task.priority === priority) return;
-      updateTask(id, { priority });
+      if (!task || task.status === status) return;
+      updateTask(id, { status });
     });
   });
 }

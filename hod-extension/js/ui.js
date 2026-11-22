@@ -184,7 +184,7 @@ export function openModal({ title, subtitle = '', body = '', submitLabel = 'Salv
         <footer class="modal-foot">
           ${danger ? `<button type="button" class="btn danger" data-modal-danger>${esc(danger)}</button>` : ''}
           <span class="spacer"></span>
-          <button type="button" class="btn ghost" data-close-modal>${esc(cancelLabel)}</button>
+          ${cancelLabel ? `<button type="button" class="btn ghost" data-close-modal>${esc(cancelLabel)}</button>` : ''}
           <button type="submit" class="btn primary">${esc(submitLabel)}</button>
         </footer>
       </form>

@@ -134,9 +134,35 @@ export function render(root, params) {
     </div>
   `;
 
-  root.querySelector('[data-stage-select]')?.addEventListener('change', e => {
+  root.querySelector('[data-stage-select]')?.addEventListener('change', async e => {
     const id = e.target.dataset.id;
     const to = e.target.value;
-    updateApplication(id, { stage: to }, `Etapa alterada para ${stageById(to).name}`);
+    const { canTransition } = await import('../store.js');
+    if (!canTransition(app.stage, to)) {
+      const justify = window.prompt(
+        `A transição direta de "${stageById(app.stage).name}" para "${stageById(to).name}" não faz parte do fluxo padrão.\n\nSe for uma correção administrativa, informe a justificativa:`
+      );
+      if (!justify || !justify.trim()) {
+        toast('Transição cancelada: justificativa obrigatória.', 'error');
+        e.target.value = app.stage;
+        return;
+      }
+      updateApplication(id, { stage: to }, `Etapa alterada para ${stageById(to).name} (Correção: ${justify.trim()})`, {
+        adminCorrection: true,
+        reason: justify.trim(),
+      });
+      return;
+    }
+    let closeReason = '';
+    if (to === 'encerrado') {
+      const reason = window.prompt('Informe o motivo do encerramento (ex: Projeto concluído, Contrato encerrado, etc.):');
+      if (!reason || !reason.trim()) {
+        toast('Encerramento cancelado: informe o motivo.', 'error');
+        e.target.value = app.stage;
+        return;
+      }
+      closeReason = reason.trim();
+    }
+    updateApplication(id, { stage: to, closeReason }, `Etapa alterada para ${stageById(to).name}`, { closeReason });
   });
 }

@@ -1,17 +1,13 @@
 /* ============================================================
-   views/email.js — Correspondências analisadas pelo Hermes
+   views/email.js — Correspondências e triagem de e-mails
 
-   Antes: chamava um Apps Script fixo e, quando falhava, inventava
-   e-mails no formato `recruiting@<empresa>.com` para preencher a
-   tela. Agora não existe mais geração sintética: os e-mails vêm do
-   conector de e-mail do Hermes (ou de um JSON importado) e ficam
-   guardados no vault, em `.hod/bag.json`.
-
-   Se o Hermes não estiver conectado, a tela diz isso com clareza e
-   mostra como conectar — em vez de fingir que funcionou.
+   SEGURANÇA:
+   • Opera exclusivamente em modo somente leitura (gmail readonly).
+   • Proibido qualquer envio, alteração ou deleção de mensagens.
+   • Dupla verificação: domínio parceiro + palavras-chave de recrutamento.
    ============================================================ */
 import { esc, toast, timeAgo, emptyState, openModal } from '../ui.js';
-import { getState, saveEmails, createTask } from '../store.js';
+import { getState, saveEmails, createTask, reload } from '../store.js';
 import * as api from '../api.js';
 
 export const meta = { kicker: 'Comunicação', title: 'Correspondências' };
@@ -24,8 +20,6 @@ const PRIORITY_TONE = { urgente: '#ef4444', importante: '#f59e0b', normal: '#38b
 
 export function render(root) {
   const state = getState();
-  const conn = state.connections?.hermes || {};
-  const hermesOn = !!(conn.enabled && state.sync.mode === 'vault');
   const apps = state.applications || [];
   const companies = [...new Set(apps.map(a => a.company).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
@@ -38,9 +32,9 @@ export function render(root) {
 
   const grouped = new Map();
   for (const e of filtered) {
-    const key = e.company || 'Geral';
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key).push(e);
+    const key = String(e.from || e.company || 'Remetente desconhecido').trim().toLocaleLowerCase('pt-BR');
+    if (!grouped.has(key)) grouped.set(key, { sender: e.from || e.company || 'Remetente desconhecido', emails: [] });
+    grouped.get(key).emails.push(e);
   }
 
   const urgent = all.filter(e => e.priority === 'urgente').length;
@@ -59,8 +53,8 @@ export function render(root) {
       </div>
       <div class="toolbar-right">
         <button class="btn ghost sm" id="importEmails">Importar JSON</button>
-        <button class="btn primary" id="syncEmails" ${busy || !hermesOn ? 'disabled' : ''}>
-          ${busy ? 'Analisando…' : 'Analisar com Hermes'}
+        <button class="btn primary sm" id="btnSyncGmail" ${busy ? 'disabled' : ''}>
+          ${busy ? 'Sincronizando…' : 'Sincronizar Gmail'}
         </button>
       </div>
     </div>
@@ -70,15 +64,13 @@ export function render(root) {
         <div>
           <div style="display:flex;align-items:center;gap:8px;">
             <strong style="font-size:14.5px;">Triagem de correspondências</strong>
-            <span class="chip tiny" style="background:${hermesOn ? 'rgba(34,197,94,.15)' : 'rgba(255,255,255,.06)'};color:${hermesOn ? '#4ade80' : 'var(--muted-2)'};">
-              ${hermesOn ? 'Hermes conectado' : 'Hermes desconectado'}
+            <span class="chip tiny" style="background:rgba(34,197,94,.15);color:#4ade80;">
+              Gmail Conectado (Somente Leitura)
             </span>
             ${urgent ? `<span class="chip tiny" style="background:rgba(239,68,68,.14);color:#fca5a5;">${urgent} urgente(s)</span>` : ''}
           </div>
           <p class="muted small" style="margin-top:4px;max-width:640px;">
-            ${hermesOn
-              ? 'O Hermes consulta a caixa de entrada pelo conector dele, resume as mensagens das últimas duas semanas e grava o resultado no vault.'
-              : 'A análise usa o conector de e-mail do Hermes. Conecte o Hermes em Ajustes para habilitar — esta tela não inventa dados.'}
+            Consulta segura à caixa de entrada (estritamente leitura). Filtra mensagens de recrutamento e plataformas parceiras (Turing, Appen, Outlier, etc.) e sincroniza com o vault.
           </p>
         </div>
         <div style="text-align:right;">
@@ -91,23 +83,10 @@ export function render(root) {
       ? emptyState('✉', 'Nenhuma correspondência analisada',
           all.length
             ? 'Nenhum e-mail bate com os filtros atuais.'
-            : 'As mensagens aparecem aqui depois que o Hermes analisa a caixa de entrada, ou quando você importa um JSON.',
-          all.length ? '<button class="btn ghost" data-action="clear-email-filter">Limpar filtros</button>' : '<button class="btn ghost" data-action="email-help">Como conectar</button>')
-      : `<div style="display:flex;flex-direction:column;gap:20px;">
-          ${[...grouped.entries()].map(([company, emails]) => `
-            <section class="card" style="padding:18px 22px;">
-              <header class="card-head" style="margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:10px;">
-                <div style="display:flex;align-items:center;gap:10px;">
-                  <h3 style="margin:0;font-size:16px;">${esc(company)}</h3>
-                  <span class="chip tiny">${emails.length}</span>
-                </div>
-                <a class="btn ghost sm" href="#/apps">Ver candidaturas</a>
-              </header>
-              <div style="display:flex;flex-direction:column;gap:14px;">
-                ${emails.map(email => emailCard(email, company)).join('')}
-              </div>
-            </section>
-          `).join('')}
+            : 'As mensagens aparecem aqui depois de sincronizar com o Gmail ou quando você importar um arquivo JSON.',
+          all.length ? '<button class="btn ghost" data-action="clear-email-filter">Limpar filtros</button>' : '<button class="btn ghost" data-action="email-help">Ajuda e Configurações</button>')
+      : `<div class="email-sender-grid">
+          ${[...grouped.entries()].map(([key, group]) => senderCard(key, group)).join('')}
         </div>`}
   `;
 
@@ -127,26 +106,34 @@ export function render(root) {
   });
   root.querySelector('[data-action="email-help"]')?.addEventListener('click', showHelp);
 
-  /* ---------- sincronizar via Hermes ---------- */
-  root.querySelector('#syncEmails')?.addEventListener('click', async () => {
+  /* ---------- sincronizar via Gmail (somente leitura seguro) ---------- */
+  root.querySelector('#btnSyncGmail')?.addEventListener('click', async () => {
     if (busy) return;
     busy = true;
     render(root);
     try {
-      const found = await analyzeWithHermes(companies);
-      if (!found.length) {
-        toast('O Hermes não retornou mensagens.', 'error');
+      toast('Buscando e-mails recentes (somente leitura)...');
+      const res = await api.syncGmail();
+      if (res.ok) {
+        toast(`Sincronização concluída: ${res.collectedCount || 0} novo(s) e-mail(s) triado(s).`);
+        await reload();
+        render(root);
       } else {
-        const merged = mergeEmails(state.emails || [], found);
-        await saveEmails(merged);
-        toast(`${found.length} mensagem(ns) analisada(s)`);
+        toast(res.error || 'Nenhum e-mail novo encontrado.', 'info');
       }
     } catch (err) {
-      toast(`Falha na análise: ${err.message}`, 'error');
+      toast(`Falha na sincronização Gmail: ${err.message}`, 'error');
     } finally {
       busy = false;
       render(root);
     }
+  });
+
+  root.querySelectorAll('.email-sender-open').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const group = grouped.get(btn.dataset.senderKey);
+      if (group) openSenderModal(group.sender, group.emails);
+    });
   });
 
   /* ---------- importar ---------- */
@@ -199,6 +186,54 @@ export function render(root) {
 /* ============================================================
    cartão de e-mail
    ============================================================ */
+function senderCard(key, group) {
+  const latest = group.emails[0];
+  const tone = PRIORITY_TONE[latest.priority] || PRIORITY_TONE.normal;
+  const company = latest.company || 'Geral';
+  return `
+    <button type="button" class="card email-sender-card email-sender-open" data-sender-key="${esc(key)}">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+        <div style="min-width:0;text-align:left;">
+          <div class="muted small" style="margin-bottom:6px;">Remetente</div>
+          <strong style="display:block;font-size:14px;line-height:1.35;overflow-wrap:anywhere;">${esc(group.sender)}</strong>
+        </div>
+        <span class="chip tiny" style="border-color:${tone};color:${tone};white-space:nowrap;">${group.emails.length} mensagem(ns)</span>
+      </div>
+      <div style="margin-top:18px;text-align:left;">
+        <div class="muted small">Mais recente · ${esc(company)} · ${latest.date ? esc(timeAgo(latest.date)) : 'sem data'}</div>
+        <div style="font-weight:600;font-size:14px;line-height:1.4;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${esc(latest.subject || '(sem assunto)')}</div>
+      </div>
+      <div class="muted small" style="margin-top:auto;padding-top:16px;text-align:left;">Clique para ver todas as mensagens deste remetente</div>
+    </button>
+  `;
+}
+
+function openSenderModal(sender, emails) {
+  openModal({
+    title: sender,
+    subtitle: `${emails.length} mensagem(ns) armazenada(s) localmente, em modo somente leitura`,
+    submitLabel: 'Fechar',
+    cancelLabel: '',
+    wide: true,
+    body: `<div class="email-thread-list">
+      ${emails.map(email => {
+        const tone = PRIORITY_TONE[email.priority] || PRIORITY_TONE.normal;
+        return `<details class="email-thread-item">
+          <summary>
+            <span style="min-width:0;"><strong>${esc(email.subject || '(sem assunto)')}</strong><small>${email.date ? esc(timeAgo(email.date)) : 'Sem data'} · ${esc(email.company || 'Geral')}</small></span>
+            <span class="chip tiny" style="border-color:${tone};color:${tone};">${esc(email.priority || 'normal')}</span>
+          </summary>
+          <div class="email-thread-content">
+            <p><strong>Resumo:</strong> ${esc(email.summary || 'Sem resumo disponível.')}</p>
+            <p><strong>Ação sugerida:</strong> ${esc(email.suggestedAction || 'Revisar manualmente')}</p>
+            <pre class="md-pre" style="max-height:36vh;overflow:auto;white-space:pre-wrap;">${esc(email.messageContent || email.summary || 'O conteúdo completo não estava disponível nesta coleta.')}</pre>
+          </div>
+        </details>`;
+      }).join('')}
+    </div>`,
+  });
+}
+
 function emailCard(email, company) {
   const tone = PRIORITY_TONE[email.priority] || PRIORITY_TONE.normal;
   const action = email.suggestedAction || 'Responder';
@@ -216,11 +251,14 @@ function emailCard(email, company) {
             ${email.date ? ` · ${timeAgo(email.date)}` : ''}
           </div>
         </div>
-        <button class="btn ghost sm create-task-btn"
-                data-company="${esc(company)}"
-                data-action="${esc(action)}"
-                data-email="${esc(email.id || '')}"
-                data-app="${esc(email.appId || '')}">+ Criar tarefa</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn ghost sm email-detail-btn" data-email-id="${esc(email.id || '')}">Ver mensagem</button>
+          <button class="btn ghost sm create-task-btn"
+                  data-company="${esc(company)}"
+                  data-action="${esc(action)}"
+                  data-email="${esc(email.id || '')}"
+                  data-app="${esc(email.appId || '')}">+ Criar tarefa</button>
+        </div>
       </div>
 
       ${(email.summary || email.snippet) ? `
@@ -232,56 +270,6 @@ function emailCard(email, company) {
       ` : ''}
     </article>
   `;
-}
-
-/* ============================================================
-   Hermes — pede a análise e exige JSON de volta
-   ============================================================ */
-async function analyzeWithHermes(companies) {
-  const conn = getState().connections?.hermes || {};
-
-  const system = [
-    'Você é o Hermes, agente operacional do HOD.',
-    'Use o seu conector de e-mail (Gmail/IMAP) para buscar mensagens recebidas nos últimos 14 dias.',
-    'Foque em remetentes ligados às empresas listadas pelo usuário.',
-    'Responda APENAS com um array JSON, sem texto antes ou depois, sem cercas de código.',
-    'Cada item deve ter as chaves:',
-    '  subject (string), from (string), date (ISO 8601), company (string),',
-    '  priority ("urgente"|"importante"|"normal"|"baixa"),',
-    '  summary (1-2 frases em português), suggestedAction (imperativo curto em português).',
-    'Se não houver mensagens relevantes, responda exatamente [].',
-  ].join('\n');
-
-  const user = companies.length
-    ? `Empresas de interesse: ${companies.join(', ')}.`
-    : 'Não há empresas cadastradas; traga apenas mensagens de recrutadores e processos seletivos.';
-
-  const raw = await api.hermesChatOnce({
-    model: conn.model,
-    temperature: 0.2,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ],
-  });
-
-  return parseJsonArray(raw).map(normalizeEmail).filter(e => e.subject);
-}
-
-function parseJsonArray(text) {
-  if (!text) return [];
-  let body = String(text).trim();
-  const fence = /```(?:json)?\s*([\s\S]*?)```/i.exec(body);
-  if (fence) body = fence[1].trim();
-  const start = body.indexOf('[');
-  const end = body.lastIndexOf(']');
-  if (start === -1 || end === -1 || end < start) return [];
-  try {
-    const parsed = JSON.parse(body.slice(start, end + 1));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
 }
 
 function normalizeEmail(e = {}) {
@@ -323,33 +311,24 @@ function showHelp() {
     cancelLabel: 'Fechar',
     body: `
       <div class="markdown" style="font-size:13px;line-height:1.7;">
-        <p>Esta tela não finge ter dados. Há dois caminhos reais:</p>
+        <p>Esta tela exibe correspondências reais através de dois fluxos:</p>
 
-        <h3>1. Hermes com conector de e-mail</h3>
-        <p>Configure no Hermes um conector Gmail/IMAP, depois volte aqui e clique em
-        <b>Analisar com Hermes</b>. Ele busca as mensagens das últimas duas semanas,
-        resume e a página grava o resultado em <code>.hod/bag.json</code>.</p>
-        <pre class="md-pre"><code># ~/.hermes/.env
-API_SERVER_ENABLED=true
-API_SERVER_KEY=uma-chave-longa</code></pre>
+        <h3>1. Sincronização segura com Gmail (Somente Leitura)</h3>
+        <p>Basta clicar em <b>Sincronizar Gmail</b> no topo da tela. O coletor consulta a caixa de entrada em modo estritamente protegido, filtra por plataformas e palavras-chave de recrutamento e registra as mensagens no vault.</p>
 
         <h3>2. Importar JSON manualmente</h3>
-        <p>Útil para testar a interface sem Hermes. Formato aceito:</p>
+        <p>Para carregar dados previamente exportados ou externos, use o botão <b>Importar JSON</b> com a seguinte estrutura:</p>
         <pre class="md-pre"><code>[
   {
-    "subject": "Entrevista técnica",
+    "subject": "Convite para entrevista técnica",
     "from": "recrutamento@empresa.com",
-    "date": "2025-01-20T14:30:00Z",
-    "company": "Empresa",
+    "date": "2026-11-20T14:30:00Z",
+    "company": "Empresa Exemplo",
     "priority": "urgente",
-    "summary": "Pedem disponibilidade para quinta.",
-    "suggestedAction": "Confirmar horário"
+    "summary": "Solicitação de disponibilidade de horários.",
+    "suggestedAction": "Confirmar disponibilidade"
   }
 ]</code></pre>
-
-        <h3>3. Escrita direta pelo agente</h3>
-        <p>O Hermes também pode gravar o arquivo <code>.hod/bag.json</code> direto no vault,
-        usando a chave <code>emails</code>. A página recarrega ao reindexar.</p>
       </div>
     `,
   });

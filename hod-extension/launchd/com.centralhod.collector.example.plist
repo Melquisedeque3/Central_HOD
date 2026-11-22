@@ -5,6 +5,8 @@
   <key>ProgramArguments</key><array>
     <string>/usr/bin/python3</string>
     <string>__HOD_ROOT__/collectors/lever_collector.py</string>
+    <string>--all</string>
+    <string>--profile</string>
     <string>--commit</string>
   </array>
   <key>StartInterval</key><integer>21600</integer>

@@ -35,9 +35,9 @@ try {
   for (let i = 0; i < 50; i++) { try { if ((await fetch(`${api}/api/health`)).ok) break; } catch {} await sleep(50); }
   const args = ['collectors/lever_collector.py', '--endpoint', `http://127.0.0.1:${address.port}/postings`, '--api-url', api, '--commit'];
   const first = await run('python3', args, { cwd: appRoot, env: { ...env, HOD_COLLECTOR_TOKEN: token } });
-  assert.equal(first.code, 0, first.stderr); assert.equal(JSON.parse(first.stdout).created, 1);
+  assert.equal(first.code, 0, first.stderr); assert.equal(JSON.parse(first.stdout).sources[0].created, 1);
   const second = await run('python3', args, { cwd: appRoot, env: { ...env, HOD_COLLECTOR_TOKEN: token } });
-  assert.equal(second.code, 0, second.stderr); assert.equal(JSON.parse(second.stdout).duplicate, 1);
+  assert.equal(second.code, 0, second.stderr); assert.equal(JSON.parse(second.stdout).sources[0].duplicate, 1);
   const state = await fetch(`${api}/api/opportunities`, { headers: { authorization: 'Bearer collector-admin' } });
   const body = await state.json(); assert.equal(state.status, 200); assert.equal(body.opportunities.length, 1); assert.equal(body.opportunities[0].description, 'Analyze data.');
   const audit = await fetch(`${api}/api/audit`, { headers: { authorization: 'Bearer collector-admin' } });

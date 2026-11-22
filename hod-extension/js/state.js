@@ -5,8 +5,8 @@ export const uiState = {
   home: { day: '' },
   pipeline: { q: '', priority: '' },
   tasks: { q: '', status: 'open', priority: '', app: '' },
-  apps: { q: '', stage: '' },
-  study: { q: '', app: '' },
+  apps: { q: '', stage: '', tab: 'aplicacoes', oppQ: '', oppSource: '', oppStatus: '', oppQueue: '' },
+  study: { q: '', app: '', company: '' },
   ai: { tab: 'chat' },
 };
 

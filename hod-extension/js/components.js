@@ -20,16 +20,20 @@ export function taskRow(task, { compact = false } = {}) {
   const done = task.status === 'done';
   const info = dueInfo(task.dueAt);
   const overdue = info && info.tone === 'over' && !done;
+  const appTitle = app ? (app.role ? `${app.company} — ${app.role}` : app.company) : (task.appLabel || '');
   return `<div class="task-row ${done ? 'done' : ''} ${overdue ? 'overdue' : ''}" data-task-id="${esc(task.id)}">
     <button class="check ${done ? 'on' : ''}" data-action="toggle-task" data-id="${esc(task.id)}"
       aria-label="${done ? 'Reabrir' : 'Concluir'} tarefa" aria-pressed="${done}">
       ${done ? '✓' : ''}
     </button>
     <div class="task-main">
-      <div class="task-title">${esc(task.title)}</div>
+      <div class="task-title">
+        ${esc(task.title)}
+        ${task.isMain ? '<span class="chip tiny" style="margin-left:6px;background:rgba(126,203,219,0.15);color:var(--accent);">★ Próxima ação</span>' : ''}
+      </div>
       <div class="task-meta">
         ${priorityDot(task.priority)}
-        ${app ? `<button class="link" data-action="open-app" data-id="${esc(app.id)}">${esc(app.company)}</button>` : ''}
+        ${app ? `<button class="link" data-action="open-app" data-id="${esc(app.id)}" title="Abrir candidatura vinculada">🔗 ${esc(appTitle)}</button>` : '<span class="muted" style="font-size:11px;">Independente</span>'}
         ${task.notes && !compact ? `<span class="muted">· ${esc(task.notes.slice(0, 90))}</span>` : ''}
       </div>
     </div>

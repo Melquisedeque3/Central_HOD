@@ -24,6 +24,13 @@ try {
     assert.equal((await vault.state()).opportunities.length, 1);
     await assert.rejects(vault.put('opportunity', { ...opportunity, id: 'opp_unit_2' }), error => error.status === 409);
   });
+  await test('elegibilidade de oportunidade é validada e preservada', async () => {
+    const valid = { id: 'opp_eligibility', source: 'Fonte', sourceId: 'eligibility-1', title: 'Avaliador', url: 'https://example.test/eligibility', location: 'Brazil', eligibilityStatus: 'INCONCLUSIVE', reviewQueue: 'verification', profileVersion: 'resume-v1', eligibility: { overall: 'INCONCLUSIVE', geographic: { status: 'INCONCLUSIVE' } } };
+    await vault.put('opportunity', valid);
+    const state = await vault.state();
+    assert.equal(state.opportunities.find(item => item.id === valid.id)?.eligibilityStatus, 'INCONCLUSIVE');
+    await assert.rejects(() => vault.put('opportunity', { ...valid, id: 'opp_invalid_eligibility', sourceId: 'eligibility-2', eligibilityStatus: 'MAYBE' }), /elegibilidade inválido/);
+  });
   await test('path traversal e diretório Work não autorizado são bloqueados', async () => { await assert.rejects(vault.readNote('../.hod/audit.jsonl'), error => error.status === 403 || error.status === 400); await assert.rejects(vault.writeWorkDocument('Candidaturas', { title: 'x', content: 'x' }), error => error.status === 403); });
   await test('arquivo de persistência interrompida é ignorado', async () => { await fs.writeFile(path.join(vaultPath, 'Candidaturas', '.tmp-interrompido'), 'incompleto'); assert.equal((await vault.state()).applications.length, 1); });
   await test('nota Markdown corrompida é excluída do estado e registrada como erro', async () => { await fs.writeFile(path.join(vaultPath, 'Candidaturas', 'corrompida.md'), '---\nhod_type: application\nid: corrupt_app\n---\n'); const index = await vault.scan(true); assert.equal(index.records.some(record => record.id === 'corrupt_app'), false); assert.equal(index.errors.some(error => error.includes('corrompida.md')), true); });

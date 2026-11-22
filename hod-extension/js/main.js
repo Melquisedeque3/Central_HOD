@@ -88,12 +88,18 @@ function updateBreadcrumb(meta) {
   const sep2 = $('#crumb-sep-2');
   const crumb = $('#crumb-current');
   const isDetail = current.name === 'apps' && !!current.params.id;
+  const isHub = current.name === 'home' && !!current.params.id;
 
   if (isDetail) {
     if (parent) { parent.hidden = false; parent.textContent = 'Processos'; parent.dataset.nav = 'apps'; }
     if (sep) sep.hidden = false;
     if (sep2) sep2.hidden = false;
     if (crumb) crumb.textContent = viewBody.dataset.crumb || 'Processo';
+  } else if (isHub) {
+    if (parent) { parent.hidden = false; parent.textContent = 'Início'; parent.dataset.nav = 'home'; }
+    if (sep) sep.hidden = false;
+    if (sep2) sep2.hidden = false;
+    if (crumb) crumb.textContent = viewBody.dataset.crumb || 'Área';
   } else {
     if (parent) parent.hidden = true;
     if (sep) sep.hidden = false;

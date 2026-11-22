@@ -1,0 +1,10 @@
+{
+  "version": "resume-melquisedeque-2026-11",
+  "profile": "Melquisedeque — generalista de avaliação de IA e qualidade de dados",
+  "residence": {"country": "Brazil", "state": "Sergipe"},
+  "languages": [{"name": "portuguese", "level": "native"}, {"name": "english", "level": "fluent"}, {"name": "spanish", "level": "fluent"}],
+  "interests": ["AI Evaluation", "Data Annotation", "Search Evaluation", "Relevance Rating", "Data Quality", "Linguistic QA"],
+  "experienceKeywords": ["search quality", "search engine", "data quality", "data annotation", "relevance rating", "ai evaluation", "linguistic qa"],
+  "excludedAreas": ["software engineer", "medical", "legal"],
+  "requiredPreferences": ["remote", "freelance", "generalist"]
+}

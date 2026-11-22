@@ -33,10 +33,11 @@ const HANDLERS = {
   'new-app': ({ company, priority }) => openAppModal('', { company: company || '', priority: priority || '' }),
   'del-app': ({ id }) => confirmDeleteApp(id),
 
-  'new-task': ({ app, priority, dueAt }) => openTaskModal('', {
+  'new-task': ({ app, priority, dueAt, status }) => openTaskModal('', {
     appId: app || '',
     priority: priority || '',
     dueAt: dueAt || '',
+    status: status || 'todo',
   }),
   'edit-task': ({ id }) => openTaskModal(id),
   'del-task': ({ id }) => confirmDeleteTask(id),

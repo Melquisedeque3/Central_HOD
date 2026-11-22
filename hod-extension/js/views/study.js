@@ -20,19 +20,28 @@ const ACCEPT = '.md,.markdown,.txt,.pdf,.docx,.csv,.json';
 export function render(root, params) {
   const state = getState();
   const f = uiState.study;
-  const q = f.q.toLowerCase();
+  const q = (f.q || '').toLowerCase();
 
-  const guides = state.guidelines.filter(g =>
-    (!q || `${g.title} ${g.body}`.toLowerCase().includes(q)) && (!f.app || g.appId === f.app)
-  );
+  const companies = [...new Set(state.guidelines.map(g => g.company).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
+  const guides = state.guidelines.filter(g => {
+    if (q && !`${g.title} ${g.body} ${g.company || ''} ${g.project || ''} ${g.category || ''}`.toLowerCase().includes(q)) return false;
+    if (f.app && g.appId !== f.app) return false;
+    if (f.company && g.company !== f.company) return false;
+    return true;
+  });
   const selected = params.g ? getGuideline(params.g) : guides[0] || null;
   const linkedApp = selected?.appId ? state.applications.find(a => a.id === selected.appId) : null;
-  const hermesOn = !!state.connections?.hermes?.enabled;
+  const aiOn = !!state.connections?.ai?.enabled;
 
   root.innerHTML = `
     <div class="toolbar">
       <div class="filters">
-        <input id="guideSearch" data-filter="study.q" value="${esc(f.q)}" placeholder="Buscar em títulos e conteúdo…" aria-label="Buscar guidelines">
+        <input id="guideSearch" data-filter="study.q" value="${esc(f.q || '')}" placeholder="Buscar por projeto, empresa ou regras…" aria-label="Buscar guidelines">
+        <select data-filter="study.company" aria-label="Filtrar por empresa">
+          <option value="">Todas as empresas (${companies.length})</option>
+          ${companies.map(c => `<option value="${esc(c)}" ${f.company === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+        </select>
         <select data-filter="study.app" aria-label="Filtrar por candidatura">
           <option value="">Todas as candidaturas</option>
           ${state.applications.map(a => `<option value="${esc(a.id)}" ${f.app === a.id ? 'selected' : ''}>${esc(a.company)}</option>`).join('')}
@@ -54,22 +63,33 @@ export function render(root, params) {
         <aside class="guide-side">
           ${guides.length ? guides.map(g => {
             const app = state.applications.find(a => a.id === g.appId);
+            const comp = g.company || app?.company || 'Geral';
             return `<button class="guide-item ${selected?.id === g.id ? 'active' : ''}" data-nav="#/study?g=${encodeURIComponent(g.id)}">
-              <strong>${esc(g.title)}</strong>
-              <small class="muted">${esc(app?.company || 'Sem vínculo')} · ${esc(g.language || '—')} · ${relativeTime(g.updatedAt)}</small>
+              <strong style="display:block;font-size:13.5px;margin-bottom:3px;">${esc(g.title)}</strong>
+              <small class="muted" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span class="chip tiny" style="font-size:10px;padding:1px 6px;">${esc(comp)}</span>
+                ${g.project ? `<span>· ${esc(g.project)}</span>` : ''}
+                <span>· ${esc(g.language || '—')}</span>
+              </small>
             </button>`;
-          }).join('') : '<p class="muted pad">Nada encontrado.</p>'}
+          }).join('') : '<p class="muted pad">Nada encontrado com os filtros atuais.</p>'}
         </aside>
 
         <article class="guide-reader card">
           ${selected ? `
             <header class="card-head">
               <div>
-                <h3>${esc(selected.title)}</h3>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                  <h3 style="margin:0;font-size:17px;">${esc(selected.title)}</h3>
+                  ${selected.company ? `<span class="chip tiny" style="background:rgba(56,189,248,.14);color:#38bdf8;font-weight:600;">${esc(selected.company)}</span>` : ''}
+                  ${selected.project ? `<span class="chip tiny">${esc(selected.project)}</span>` : ''}
+                  ${selected.category ? `<span class="chip tiny" style="background:rgba(168,85,247,.14);color:#c084fc;">${esc(selected.category)}</span>` : ''}
+                </div>
                 <p class="muted small">
                   ${linkedApp ? `<a class="link" href="#/apps/${encodeURIComponent(linkedApp.id)}">${esc(linkedApp.company)}${linkedApp.role ? ' — ' + esc(linkedApp.role) : ''}</a> · ` : ''}
-                  ${esc(selected.language || 'idioma não informado')}
+                  Idioma: <code>${esc(selected.language || 'não informado')}</code>
                   ${safeExternalUrl(selected.sourceUrl) ? ` · <a class="link" href="${safeExternalUrl(selected.sourceUrl)}" target="_blank" rel="noopener">fonte ↗</a>` : ''}
+                  · Atualizado: ${relativeTime(selected.updatedAt)}
                 </p>
               </div>
               <div class="head-actions">
@@ -79,10 +99,11 @@ export function render(root, params) {
             </header>
 
             <div class="guide-tools">
-              <button class="btn ghost sm" data-translate ${hermesOn ? '' : 'disabled title="Conecte o Hermes em Ajustes"'}>Traduzir para PT-BR</button>
-              <button class="btn ghost sm" data-summarize ${hermesOn ? '' : 'disabled title="Conecte o Hermes em Ajustes"'}>Resumir com o agente</button>
+              <button class="btn primary sm" data-fera ${aiOn ? '' : 'disabled title="Configure a IA em Ajustes"'}>🐾 Estudar com FERA</button>
+              <button class="btn ghost sm" data-translate ${aiOn ? '' : 'disabled title="Configure a IA em Ajustes"'}>Traduzir para PT-BR</button>
+              <button class="btn ghost sm" data-summarize ${aiOn ? '' : 'disabled title="Configure a IA em Ajustes"'}>Resumir com o agente</button>
               <button class="btn ghost sm" data-copy>Copiar markdown</button>
-              <span class="muted small">${hermesOn ? 'Ações executadas pelo Hermes Agent' : 'Sem Hermes: ações de IA desativadas'}</span>
+              <span class="muted small">${aiOn ? 'Tutor FERA pronto com a guideline' : 'IA desativada (configure em Ajustes)'}</span>
             </div>
 
             <div class="markdown guide-body">${miniMarkdown(selected.body)}</div>
@@ -132,6 +153,11 @@ export function render(root, params) {
       await navigator.clipboard.writeText(selected.body || '');
       toast('Markdown copiado');
     } catch { toast('Não foi possível copiar', 'error'); }
+  });
+
+  root.querySelector('[data-fera]')?.addEventListener('click', async () => {
+    if (!selected) return;
+    await runAgentAction(root, selected, 'fera');
   });
 
   root.querySelector('[data-translate]')?.addEventListener('click', async () => {
@@ -270,13 +296,38 @@ async function unzip(bytes) {
    ============================================================ */
 async function runAgentAction(root, guideline, kind) {
   const state = getState();
-  const model = state.connections?.hermes?.model || '';
   const original = (guideline.body || '').slice(0, 12000);
 
   if (!original.trim()) { toast('Esta guideline está vazia.', 'error'); return; }
 
+  if (kind === 'fera') {
+    modalBusy(root, 'FERA preparando a aula…', guideline.title);
+    try {
+      const res = await fetch(`/api/agent/run/guideline`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ guidelineId: guideline.id }),
+      });
+      const data = await res.json();
+      closeBusy();
+      if (!data.ok) throw new Error(data.error || 'Erro ao executar o tutor FERA');
+      
+      openModal(`🐾 FERA — ${esc(guideline.title)}`, `
+        <div style="max-height:60vh;overflow-y:auto;line-height:1.6;font-size:14px;">
+          ${miniMarkdown(data.result)}
+        </div>
+      `, [
+        { label: 'Fechar', kind: 'ghost', onClick: () => {} },
+      ]);
+    } catch (err) {
+      closeBusy();
+      toast(`FERA: ${err.message}`, 'error');
+    }
+    return;
+  }
+
   const label = kind === 'translation' ? 'Traduzindo' : 'Resumindo';
-  toast(`${label} com o Hermes…`);
+  toast(`${label} com o agente…`);
   modalBusy(root, `${label}…`, guideline.title);
 
   const prompt = kind === 'translation'
@@ -285,9 +336,8 @@ async function runAgentAction(root, guideline, kind) {
 
   try {
     const reply = await api.hermesChatOnce({
-      model,
       messages: [
-        { role: 'system', content: 'Você é o Hermes, agente operacional do HOD. Responda em português do Brasil, direto ao ponto.' },
+        { role: 'system', content: 'Você é o assistente operacional do HOD. Responda em português do Brasil, direto ao ponto.' },
         { role: 'user', content: prompt },
       ],
       temperature: 0.2,
@@ -302,7 +352,7 @@ async function runAgentAction(root, guideline, kind) {
     toast(kind === 'translation' ? 'Tradução salva na guideline' : 'Resumo anexado à guideline');
   } catch (err) {
     closeBusy();
-    toast(`Hermes falhou: ${err.message}`, 'error');
+    toast(`Falha na operação: ${err.message}`, 'error');
   }
 }
 

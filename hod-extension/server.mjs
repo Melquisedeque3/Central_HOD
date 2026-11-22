@@ -26,6 +26,7 @@ import { canAccess, isAllowedOrigin, loadAuth, validateLoopbackUrl } from './lib
 import { opportunityFingerprint, validateRecord } from './lib/validation.mjs';
 import { BackupManager } from './lib/backups.mjs';
 import { applyWorkAction, buildWorkContext } from './lib/work.mjs';
+import { saveApplicationWithTaskSync, saveTaskWithAppSync, convertOpportunityToApplication } from './lib/sync.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -38,25 +39,26 @@ const argOf = (name, fallback) => {
 
 const PORT = Number(argOf('port', process.env.HOD_PORT || 8420));
 const HOST = argOf('host', process.env.HOD_HOST || '127.0.0.1');
-const VAULT_PATH = path.resolve(argOf('vault', process.env.HOD_VAULT || path.join(__dirname, 'vault')));
+const DEFAULT_VAULT = '/Volumes/Sem Título 3/Home_Office/Obsidian Vault';
+const VAULT_PATH = path.resolve(argOf('vault', process.env.HOD_VAULT || DEFAULT_VAULT));
 const CONFIG_FILE = path.resolve(
   argOf('config', process.env.HOD_CONFIG || path.join(__dirname, '.hod-config.json')),
 );
 const AUTH_FILE = path.resolve(argOf('auth', process.env.HOD_AUTH_FILE || path.join(__dirname, '.hod-auth.json')));
 
 const DEFAULTS = {
+  vault: DEFAULT_VAULT,
   obsidian: {
     enabled: false,
     url: 'http://127.0.0.1:27123',
     key: '',
     folder: '',
   },
-  hermes: {
+  ai: {
     enabled: false,
-    url: 'http://127.0.0.1:8642',
+    provider: 'gemini',
+    model: 'gemini-2.0-flash',
     key: '',
-    model: 'hermes-3-llama-3.1-405b',
-    dashboard: 'http://127.0.0.1:9119',
   },
   routine: {
     slots: [
@@ -78,7 +80,8 @@ async function readConfig() {
     const parsed = JSON.parse(raw);
     return {
       obsidian: { ...DEFAULTS.obsidian, ...(parsed.obsidian || {}) },
-      hermes: { ...DEFAULTS.hermes, ...(parsed.hermes || {}) },
+      ai: { ...DEFAULTS.ai, ...(parsed.ai || {}) },
+      profile: parsed.profile || {},
       routine: { ...DEFAULTS.routine, ...(parsed.routine || {}) },
       ui: { ...DEFAULTS.ui, ...(parsed.ui || {}) },
     };
@@ -175,16 +178,6 @@ function obsidianBase() {
   return String(config.obsidian.url || '').replace(/\/+$/, '');
 }
 
-function hermesBase() {
-  const raw = String(config.hermes.url || '').replace(/\/+$/, '');
-  return raw.endsWith('/v1') ? raw : `${raw}/v1`;
-}
-
-function hermesHeaders(extra = {}) {
-  const h = { 'content-type': 'application/json', ...extra };
-  if (config.hermes.key) h.Authorization = `Bearer ${config.hermes.key}`;
-  return h;
-}
 
 /* ============ status agregado ============ */
 async function health() {
@@ -193,7 +186,7 @@ async function health() {
     version: '4.0.0',
     vault: { path: VAULT_PATH, mode: 'filesystem' },
     obsidian: { configured: !!config.obsidian.url, enabled: config.obsidian.enabled, reachable: false, error: null },
-    hermes: { configured: !!config.hermes.url, enabled: config.hermes.enabled, reachable: false, error: null, dashboard: config.hermes.dashboard },
+    ai: { configured: !!config.ai?.key, enabled: config.ai?.enabled, provider: config.ai?.provider, model: config.ai?.model },
   };
 
   try {
@@ -217,20 +210,7 @@ async function health() {
     }
   }
 
-  if (config.hermes.enabled && config.hermes.url) {
-    try {
-      const res = await proxyFetch(`${hermesBase()}/models`, { headers: hermesHeaders() }, 2500);
-      out.hermes.reachable = res.ok;
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        out.hermes.models = (data.data || []).map(m => m.id).filter(Boolean);
-      } else {
-        out.hermes.error = `HTTP ${res.status}`;
-      }
-    } catch (err) {
-      out.hermes.error = err.name === 'AbortError' ? 'timeout' : err.message;
-    }
-  }
+  /* bloco hermes removido — substituído por integração via AI config */
 
   return out;
 }
@@ -323,9 +303,35 @@ async function handleAPI(req, res, url) {
     if (!TYPES[type]) return sendError(res, 400, `Tipo inválido: ${type}`);
     const data = body.data || {};
     if (!data.id) return sendError(res, 400, 'Registro sem id.');
+
+    if (type === 'application') {
+      const resSync = await saveApplicationWithTaskSync(vault, data, {
+        actor: auditActor,
+        origin: 'api',
+        adminCorrection: !!body.adminCorrection,
+        reason: body.reason || data.closeReason || '',
+      });
+      return sendJSON(res, 200, { ok: true, ...resSync.application, syncedTask: resSync.task });
+    }
+
+    if (type === 'task') {
+      const resSync = await saveTaskWithAppSync(vault, data, { actor: auditActor, origin: 'api' });
+      return sendJSON(res, 200, { ok: true, ...resSync.task, syncedApp: resSync.application });
+    }
+
     validateRecord(type, data);
     const saved = await vault.put(type, data, { actor: auditActor, origin: 'api' });
     return sendJSON(res, 200, { ok: true, ...saved });
+  }
+
+  /* ---- conversão de oportunidade em aplicação ---- */
+  const convertMatch = /^\/api\/opportunities\/([^/]+)\/convert$/.exec(pathname);
+  if (convertMatch && method === 'POST') {
+    if (!requireRole('USER')) return;
+    const body = await readBody(req);
+    const oppId = decodeURIComponent(convertMatch[1]);
+    const result = await convertOpportunityToApplication(vault, oppId, body.overrides || {}, { actor: auditActor, origin: 'api' });
+    return sendJSON(res, 201, { ok: true, ...result });
   }
 
   /* ---- exclusão de registro ---- */
@@ -357,6 +363,13 @@ async function handleAPI(req, res, url) {
   if (pathname === '/api/config' && method === 'POST') {
     if (!requireRole('ADMIN')) return;
     const body = await readBody(req);
+    // Configuração é uma superfície sensível: rejeitar campos desconhecidos
+    // impede que integrações removidas (como Hermes) sejam aceitas em silêncio
+    // ou que endpoints arbitrários sejam introduzidos por acidente.
+    const allowedConfigSections = new Set(['obsidian', 'ai', 'profile', 'routine', 'ui']);
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !allowedConfigSections.has(key))) {
+      return sendError(res, 400, 'Seção de configuração não permitida.');
+    }
     const previousPublic = publicConfig();
     const next = { ...config };
     if (body.obsidian && typeof body.obsidian === 'object') {
@@ -369,16 +382,18 @@ async function handleAPI(req, res, url) {
         ...(typeof patch.folder === 'string' ? { folder: patch.folder } : {}),
       };
     }
-    if (body.hermes && typeof body.hermes === 'object') {
-      const patch = body.hermes;
-      next.hermes = {
-        ...next.hermes,
+    if (body.ai && typeof body.ai === 'object') {
+      const patch = body.ai;
+      next.ai = {
+        ...next.ai,
         ...(typeof patch.enabled === 'boolean' ? { enabled: patch.enabled } : {}),
-        ...(patch.url !== undefined ? { url: validateLoopbackUrl(String(patch.url), 'Hermes') } : {}),
-        ...(typeof patch.key === 'string' ? { key: patch.key } : {}),
+        ...(typeof patch.provider === 'string' ? { provider: patch.provider.slice(0, 40) } : {}),
         ...(typeof patch.model === 'string' ? { model: patch.model.slice(0, 160) } : {}),
-        ...(typeof patch.dashboard === 'string' ? { dashboard: validateLoopbackUrl(patch.dashboard, 'Dashboard') } : {}),
+        ...(typeof patch.key === 'string' ? { key: patch.key } : {}),
       };
+    }
+    if (body.profile && typeof body.profile === 'object') {
+      next.profile = { ...next.profile, ...body.profile };
     }
     if (body.routine && typeof body.routine === 'object' && Array.isArray(body.routine.slots)) {
       next.routine = { ...next.routine, slots: body.routine.slots.slice(0, 24) };
@@ -448,60 +463,70 @@ async function handleAPI(req, res, url) {
     return sendError(res, 410, 'Proxy genérico do Obsidian desativado. Use documentos HOD autorizados.');
   }
 
-  /* ---- Hermes: status / modelos ---- */
-  if (pathname === '/api/hermes/models' && method === 'GET') {
+  /* ---- AI: chat com streaming (SSE) — substitui /api/hermes/chat ---- */
+  if (pathname === '/api/ai/chat' && method === 'POST') {
     if (!requireRole('ADMIN')) return;
-    if (!config.hermes.url) return sendError(res, 400, 'Hermes não configurado.');
-    try {
-      const upstream = await proxyFetch(`${hermesBase()}/models`, { headers: hermesHeaders() }, 10000);
-      const text = await upstream.text();
-      res.writeHead(upstream.status, {
-        'content-type': upstream.headers.get('content-type') || 'application/json',
-        'cache-control': 'no-store',
-      });
-      return res.end(text);
-    } catch (err) {
-      return sendError(res, 502, `Hermes inacessível: ${err.message}`);
-    }
-  }
-
-  /* ---- Hermes: chat com streaming ---- */
-  if (pathname === '/api/hermes/chat' && method === 'POST') {
-    if (!requireRole('ADMIN')) return;
-    if (!config.hermes.url) return sendError(res, 400, 'Hermes não configurado.');
+    if (!config.ai?.enabled || !config.ai?.key) return sendError(res, 400, 'Agente IA não configurado. Acesse Ajustes → Agente IA.');
     const body = await readBody(req);
-    const payload = {
-      model: body.model || config.hermes.model,
-      messages: Array.isArray(body.messages) ? body.messages : [],
-      stream: body.stream !== false,
-      temperature: body.temperature ?? 0.6,
-    };
-    if (body.tools) payload.tools = body.tools;
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const provider = body.provider || config.ai.provider || 'gemini';
+    const model = body.model || config.ai.model || 'gemini-2.0-flash';
+    const key = config.ai.key;
+    const stream = body.stream !== false;
 
     try {
-      const upstream = await proxyFetch(`${hermesBase()}/chat/completions`, {
+      if (provider === 'gemini') {
+        /* Gemini não tem streaming SSE nativo igual OpenAI — fazemos non-stream e enviamos como SSE */
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+        const geminiBody = {
+          system_instruction: body.system ? { parts: [{ text: body.system }] } : undefined,
+          contents: messages.filter(m => m.role !== 'system').map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+          generationConfig: { maxOutputTokens: body.max_tokens || 1500, temperature: body.temperature ?? 0.5 },
+        };
+        const upstream = await proxyFetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(geminiBody),
+        }, 120000);
+        const data = await upstream.json();
+        if (!upstream.ok) return sendError(res, upstream.status, data?.error?.message || 'Gemini error');
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (stream) {
+          res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+          /* simula streaming: envia em chunks de ~40 chars */
+          const chunkSize = 40;
+          for (let i = 0; i < text.length; i += chunkSize) {
+            const delta = text.slice(i, i + chunkSize);
+            const payload = JSON.stringify({ choices: [{ delta: { content: delta }, finish_reason: i + chunkSize >= text.length ? 'stop' : null }] });
+            res.write(`data: ${payload}\n\n`);
+          }
+          res.write('data: [DONE]\n\n');
+          return res.end();
+        } else {
+          return sendJSON(res, 200, { choices: [{ message: { role: 'assistant', content: text } }] });
+        }
+      }
+
+      /* OpenAI-compatible (openai, ollama, anthropic via openai-compat) */
+      const baseMap = { openai: 'https://api.openai.com/v1', ollama: 'http://127.0.0.1:11434/v1', anthropic: 'https://api.anthropic.com/openai/v1' };
+      const base = baseMap[provider] || 'https://api.openai.com/v1';
+      const headers = { 'content-type': 'application/json', Accept: stream ? 'text/event-stream' : 'application/json' };
+      if (key) headers.Authorization = `Bearer ${key}`;
+      const upstream = await proxyFetch(`${base}/chat/completions`, {
         method: 'POST',
-        headers: hermesHeaders({ Accept: payload.stream ? 'text/event-stream' : 'application/json' }),
-        body: JSON.stringify(payload),
-      }, 180000);
-
+        headers,
+        body: JSON.stringify({ model, messages, stream, temperature: body.temperature ?? 0.5, max_tokens: body.max_tokens || 1500 }),
+      }, 120000);
       if (!upstream.ok) {
-        const text = await upstream.text();
-        return sendError(res, upstream.status, text.slice(0, 900));
+        const txt = await upstream.text();
+        return sendError(res, upstream.status, txt.slice(0, 900));
       }
-
-      if (!payload.stream) {
-        const text = await upstream.text();
+      if (!stream) {
+        const txt = await upstream.text();
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-        return res.end(text);
+        return res.end(txt);
       }
-
-      res.writeHead(200, {
-        'content-type': 'text/event-stream; charset=utf-8',
-        'cache-control': 'no-cache, no-transform',
-        connection: 'keep-alive',
-        'x-accel-buffering': 'no',
-      });
+      res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
       const reader = upstream.body.getReader();
       const decoder = new TextDecoder();
       try {
@@ -510,39 +535,68 @@ async function handleAPI(req, res, url) {
           if (done) break;
           res.write(decoder.decode(value, { stream: true }));
         }
-      } finally {
-        res.end();
-      }
+      } finally { res.end(); }
       return undefined;
     } catch (err) {
       if (res.headersSent) return res.end();
-      return sendError(res, 502, `Hermes inacessível: ${err.message}`);
+      return sendError(res, 502, `AI inacessível: ${err.message}`);
     }
   }
 
-  /* ---- Hermes: enfileirar job (cron / gateway) ---- */
-  if (pathname === '/api/hermes/run' && method === 'POST') {
+  /* ---- Coletor Gmail ---- */
+  if (pathname === '/api/collectors/gmail' && method === 'POST') {
+    if (!requireRole('USER')) return;
+    try {
+      const { collectGmailInbox } = await import('./collectors/gmail_collector.mjs');
+      const result = await collectGmailInbox({ vaultPath: VAULT_PATH });
+      return sendJSON(res, 200, result);
+    } catch (err) {
+      return sendError(res, 500, `Erro na coleta do Gmail: ${err.message}`);
+    }
+  }
+
+  /* ---- Agente: executar por ID ---- */
+  if (/^\/api\/agent\/run\/([a-z-]+)$/.test(pathname) && method === 'POST') {
     if (!requireRole('ADMIN')) return;
-    if (!config.hermes.url) return sendError(res, 400, 'Hermes não configurado.');
+    const agentId = pathname.split('/').pop();
     const body = await readBody(req);
     try {
-      const upstream = await proxyFetch(`${hermesBase()}/chat/completions`, {
-        method: 'POST',
-        headers: hermesHeaders(),
-        body: JSON.stringify({
-          model: body.model || config.hermes.model,
-          messages: body.messages || [],
-          stream: false,
-        }),
-      }, 180000);
-      const text = await upstream.text();
-      res.writeHead(upstream.status, {
-        'content-type': upstream.headers.get('content-type') || 'application/json',
-        'cache-control': 'no-store',
-      });
-      return res.end(text);
+      const { runAgent } = await import('./agents/agent-runner.mjs');
+      const state = await vault.state();
+      const result = await runAgent(agentId, { state, config: { ...config, profile: body?.profile || {} }, ...(body || {}) });
+      return sendJSON(res, 200, { ok: true, agentId, ...result });
     } catch (err) {
-      return sendError(res, 502, `Hermes inacessível: ${err.message}`);
+      return sendError(res, 500, `Agente ${agentId}: ${err.message}`);
+    }
+  }
+
+  /* ---- Agente: status ---- */
+  if (/^\/api\/agent\/status\/([a-z-]+)$/.test(pathname) && method === 'GET') {
+    if (!requireRole('ADMIN')) return;
+    const agentId = pathname.split('/').pop();
+    try {
+      const { promises: fs2 } = await import('node:fs');
+      const statusFile = `${VAULT_PATH}/.hod/agent-${agentId}-status.json`;
+      const raw = await fs2.readFile(statusFile, 'utf8').catch(() => 'null');
+      const status = JSON.parse(raw) || { agentId, running: false, lastRun: null };
+      return sendJSON(res, 200, { ok: true, status });
+    } catch (err) {
+      return sendError(res, 500, err.message);
+    }
+  }
+
+  /* ---- Mensagens inter-agente ---- */
+  if (pathname === '/api/agent/messages' && method === 'GET') {
+    if (!requireRole('ADMIN')) return;
+    try {
+      const { promises: fs2 } = await import('node:fs');
+      const msgsFile = `${VAULT_PATH}/.hod/agent-messages.json`;
+      const raw = await fs2.readFile(msgsFile, 'utf8').catch(() => '[]');
+      const msgs = JSON.parse(raw);
+      const unread = url.searchParams.get('unread') === 'true';
+      return sendJSON(res, 200, { ok: true, messages: unread ? msgs.filter(m => !m.read) : msgs.slice(0, 50) });
+    } catch (err) {
+      return sendError(res, 500, err.message);
     }
   }
 
@@ -551,19 +605,20 @@ async function handleAPI(req, res, url) {
 
 function publicConfig() {
   return {
+    vaultPath: VAULT_PATH,
     obsidian: {
       enabled: config.obsidian.enabled,
       url: config.obsidian.url,
       folder: config.obsidian.folder,
       hasKey: !!config.obsidian.key,
     },
-    hermes: {
-      enabled: config.hermes.enabled,
-      url: config.hermes.url,
-      model: config.hermes.model,
-      dashboard: config.hermes.dashboard,
-      hasKey: !!config.hermes.key,
+    ai: {
+      enabled: config.ai?.enabled ?? false,
+      provider: config.ai?.provider ?? 'gemini',
+      model: config.ai?.model ?? '',
+      hasKey: !!(config.ai?.key),
     },
+    profile: config.profile || {},
     routine: config.routine,
     ui: config.ui,
   };
@@ -628,12 +683,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  const noteCount = 'HOD 4.0';
-  console.log(`\n  ${noteCount} — página local`);
+  console.log(`\n  HOD 4.0 — página local`);
   console.log(`  ▸ http://${HOST}:${PORT}`);
   console.log(`  ▸ vault: ${VAULT_PATH}`);
-  console.log(`  ▸ obsidian: ${config.obsidian.enabled ? config.obsidian.url : 'desligado'}`);
-  console.log(`  ▸ hermes:   ${config.hermes.enabled ? config.hermes.url : 'desligado'}\n`);
+  console.log(`  ▸ obsidian REST: ${config.obsidian.enabled ? config.obsidian.url : 'desligado'}`);
+  console.log(`  ▸ agente IA: ${config.ai?.enabled ? `${config.ai.provider} / ${config.ai.model}` : 'desligado'}\n`);
 });
 
 process.on('SIGINT', () => {

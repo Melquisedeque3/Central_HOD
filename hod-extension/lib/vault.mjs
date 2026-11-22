@@ -221,6 +221,10 @@ export class Vault {
     const cfg = TYPES[type];
     if (!cfg) throw new Error(`Tipo desconhecido: ${type}`);
     if (!data.id) throw new Error('Registro sem id.');
+    // A API valida antes de chegar aqui, mas backups, scripts e testes também
+    // podem chamar o vault diretamente. A fronteira de persistência mantém o
+    // mesmo contrato para todos os caminhos de escrita.
+    validateRecord(type, data);
 
     const index = await this.scan(true);
     const current = index.records.find(r => r.id === data.id && r.type === type);
@@ -353,11 +357,58 @@ export class Vault {
       else if (r.type === 'settings') out.settings = r.data;
     }
     const bag = await this._readJson('bag.json', {});
+
+    // Lê correspondências de Correspondencias/*.md geradas pelo coletor / agente
+    const corrDir = path.join(this.root, 'Correspondencias');
+    let corrEntries = [];
+    try { corrEntries = await fs.readdir(corrDir, { withFileTypes: true }); } catch {}
+    const correspondenceEmails = [];
+    for (const entry of corrEntries) {
+      if (!entry.isFile() || !entry.name.endsWith('.md') || entry.name.startsWith('.')) continue;
+      try {
+        const text = await fs.readFile(path.join(corrDir, entry.name), 'utf8');
+        const { data, body } = parseFrontmatter(text);
+        if (data.hod_type === 'email') {
+          let summary = '';
+          const matchResumo = (body || '').match(/## Resumo\s+([\s\S]*?)(?=\n## |$)/);
+          if (matchResumo) summary = matchResumo[1].trim();
+          const matchContent = (body || '').match(/## Corpo original\s+([\s\S]*?)$/);
+          const messageContent = matchContent ? matchContent[1].trim() : '';
+
+          const rawCompany = String(data.company || '').replace(/<.*?>/, '').trim();
+          const priority = data.urgent ? 'urgente' : (data.importance === 'alta' ? 'importante' : (data.importance === 'baixa' ? 'baixa' : 'normal'));
+
+          correspondenceEmails.push({
+            id: data.id || entry.name.replace(/\.md$/, ''),
+            subject: data.subject || '(sem assunto)',
+            from: data.from || '',
+            date: data.date || '',
+            company: rawCompany || 'Geral',
+            priority,
+            summary: summary || data.summary || '',
+            messageContent,
+            suggestedAction: data.action || data.suggestedAction || 'Revisar',
+            appId: data.applicationMatch || '',
+          });
+        }
+      } catch {}
+    }
+
+    const mergedEmails = [...correspondenceEmails];
+    const seenIds = new Set(mergedEmails.map(e => e.id));
+    for (const e of (bag.emails || [])) {
+      if (!seenIds.has(e.id)) {
+        mergedEmails.push(e);
+        seenIds.add(e.id);
+      }
+    }
+    mergedEmails.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
     return {
       version: 4,
       updatedAt: index.scannedAt,
       ...out,
-      emails: bag.emails || [],
+      emails: mergedEmails,
       calendarEvents: bag.calendarEvents || [],
       driveFiles: bag.driveFiles || [],
       vault: {

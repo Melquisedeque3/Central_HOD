@@ -11,6 +11,7 @@ import {
   createGuideline, updateGuideline, deleteGuideline, getGuideline,
   STAGES, PRIORITIES, STEP_KINDS,
 } from '../store.js';
+import * as api from '../api.js';
 
 const appOptions = (selected = '') => [
   { value: '', label: '— Nenhuma —' },
@@ -37,10 +38,15 @@ export function openTaskModal(id = '', preset = {}) {
         title: data.title.trim(),
         dueAt: data.dueAt || '',
         priority: data.priority,
+        status: task?.status || preset.status || 'todo',
         appId: data.appId,
         notes: data.notes.trim(),
       };
       if (!payload.title) { toast('Dê um título à tarefa.'); return false; }
+      const linkedApp = payload.appId ? getApplication(payload.appId) : null;
+      payload.appLabel = linkedApp ? `${linkedApp.company}${linkedApp.role ? ' — ' + linkedApp.role : ''}` : '';
+      if (task?.isMain) payload.isMain = true;
+
       if (task) { updateTask(task.id, payload); toast('Tarefa atualizada'); }
       else { createTask(payload); toast('Tarefa criada'); }
     },
@@ -59,6 +65,11 @@ export async function confirmDeleteTask(id) {
 /* ---------- candidatura ---------- */
 export function openAppModal(id = '', preset = {}) {
   const app = id ? getApplication(id) : null;
+  const currentStage = app?.stage || preset.stage || 'aplicado';
+  // A tarefa de acompanhamento é opcional na criação. Em candidaturas já
+  // existentes, preservamos os dados e a tarefa vinculada, quando houver.
+  const taskEnabled = app ? true : false;
+
   openModal({
     title: app ? 'Editar candidatura' : 'Nova candidatura',
     wide: true,
@@ -68,43 +79,168 @@ export function openAppModal(id = '', preset = {}) {
         ${field('Função / projeto', 'role', app?.role || preset.role || '', { placeholder: 'Ex.: Language Tester PT-BR' })}
       </div>
       <div class="grid-2">
-        ${select('Etapa', 'stage', STAGES.map(s => ({ value: s.id, label: s.name })), app?.stage || preset.stage || 'mapeada')}
-        ${select('Prioridade', 'priority', PRIORITIES.map(p => ({ value: p.id, label: p.name })), app?.priority || preset.priority || 'importante')}
+        ${select('Etapa', 'stage', STAGES.map(s => ({ value: s.id, label: s.name })), currentStage)}
+        ${field('Data da candidatura', 'appliedAt', toDateInput(app?.appliedAt || preset.appliedAt || new Date().toISOString().slice(0, 10)), { type: 'date' })}
       </div>
-      ${field('Próxima ação', 'nextAction', app?.nextAction || '', { placeholder: 'Ex.: Enviar e-mail de follow-up' })}
+      ${!app ? `<label class="field inline app-task-toggle">
+        <input type="checkbox" name="createTask" ${taskEnabled ? 'checked' : ''}>
+        <span>Criar tarefa de acompanhamento</span>
+      </label>` : ''}
+      <div id="appTaskFields" class="${taskEnabled ? '' : 'is-disabled'}">
+        <div class="grid-2">
+          ${field('Próxima ação', 'nextAction', app?.nextAction || preset.nextAction || '', { placeholder: 'Ex.: Enviar e-mail de follow-up' })}
+          <div></div>
+        </div>
+        <div class="grid-2">
+          ${field('Prazo', 'deadline', toDateInput(app?.deadline || preset.deadline || ''), { type: 'date' })}
+          ${select('Prioridade', 'priority', PRIORITIES.map(p => ({ value: p.id, label: p.name })), app?.priority || preset.priority || 'normal')}
+        </div>
+      </div>
       <div class="grid-2">
-        ${field('Prazo', 'deadline', toDateInput(app?.deadline || ''), { type: 'date' })}
-        ${field('Data da candidatura', 'appliedAt', toDateInput(app?.appliedAt || ''), { type: 'date' })}
+        ${field('Link', 'link', app?.link || preset.link || '', { placeholder: 'https://…' })}
+        ${field('Localidade', 'location', app?.location || preset.location || '', { placeholder: 'Remoto / país' })}
       </div>
       <div class="grid-2">
-        ${field('Link', 'link', app?.link || '', { placeholder: 'https://…' })}
-        ${field('Localidade', 'location', app?.location || '', { placeholder: 'Remoto / país' })}
+        ${field('Remuneração', 'compensation', app?.compensation || preset.compensation || '', { placeholder: 'Ex.: US$ 12/h' })}
+        <div></div>
       </div>
-      ${field('Remuneração', 'compensation', app?.compensation || '', { placeholder: 'Ex.: US$ 12/h' })}
-      ${textarea('Notas', 'notes', app?.notes || '', { rows: 4, placeholder: 'Requisitos, contatos, histórico…' })}
+      <div id="closeReasonWrap" style="display:${currentStage === 'encerrado' ? 'block' : 'none'};margin-top:6px;">
+        ${field('Motivo do encerramento', 'closeReason', app?.closeReason || '', { placeholder: 'Ex.: Projeto concluído / Contrato encerrado' })}
+      </div>
+      ${textarea('Notas individuais da candidatura', 'notes', app?.notes || preset.notes || '', { rows: 4, placeholder: 'Instruções de inscrição, contatos, observações…' })}
     `,
-    onSubmit(data) {
+    onMount(dialog) {
+      const stageSelect = dialog.querySelector('select[name="stage"]');
+      const reasonWrap = dialog.querySelector('#closeReasonWrap');
+      stageSelect?.addEventListener('change', () => {
+        if (reasonWrap) reasonWrap.style.display = stageSelect.value === 'encerrado' ? 'block' : 'none';
+      });
+      const toggle = dialog.querySelector('input[name="createTask"]');
+      const taskFields = dialog.querySelector('#appTaskFields');
+      const setTaskFields = enabled => {
+        taskFields?.classList.toggle('is-disabled', !enabled);
+        taskFields?.querySelectorAll('input, select').forEach(input => { input.disabled = !enabled; });
+      };
+      if (toggle) {
+        setTaskFields(toggle.checked);
+        toggle.addEventListener('change', () => setTaskFields(toggle.checked));
+      }
+    },
+    async onSubmit(data) {
+      const createTask = app ? true : data.createTask === 'on';
       const payload = {
         company: data.company.trim(),
         role: data.role.trim(),
         stage: data.stage,
-        priority: data.priority,
-        nextAction: data.nextAction.trim(),
-        deadline: data.deadline,
+        priority: createTask ? (data.priority || 'normal') : 'normal',
+        nextAction: createTask ? (data.nextAction || '').trim() : '',
+        deadline: createTask ? (data.deadline || '') : '',
         appliedAt: data.appliedAt,
         link: data.link.trim(),
         location: data.location.trim(),
         compensation: data.compensation.trim(),
+        closeReason: (data.closeReason || '').trim(),
         notes: data.notes.trim(),
+        taskEnabled: createTask,
+        mainTaskId: app?.mainTaskId || '',
       };
       if (!payload.company) { toast('Informe a empresa.'); return false; }
+      if (payload.stage === 'encerrado' && !payload.closeReason) {
+        toast('Informe o motivo de encerramento da candidatura.', 'error');
+        return false;
+      }
+
       if (app) {
         const stageChanged = app.stage !== payload.stage;
-        updateApplication(app.id, payload, stageChanged ? `Etapa alterada para ${STAGES.find(s => s.id === payload.stage)?.name}` : '');
+        let adminCorrection = false;
+        let adminReason = '';
+
+        if (stageChanged) {
+          const { canTransition } = await import('../store.js');
+          if (!canTransition(app.stage, payload.stage)) {
+            const justify = window.prompt(
+              `A transição direta de "${app.stage}" para "${payload.stage}" não faz parte do fluxo padrão.\n\nSe for uma correção de erro administrativo, digite a justificativa para registrar no histórico:`
+            );
+            if (!justify || !justify.trim()) {
+              toast('Transição cancelada: justificativa obrigatória para correção.', 'error');
+              return false;
+            }
+            adminCorrection = true;
+            adminReason = justify.trim();
+          }
+        }
+
+        updateApplication(
+          app.id,
+          payload,
+          stageChanged ? `Etapa alterada para ${STAGES.find(s => s.id === payload.stage)?.name}${adminReason ? ' (Correção: ' + adminReason + ')' : ''}` : '',
+          { adminCorrection, reason: adminReason || payload.closeReason }
+        );
         toast('Candidatura atualizada');
       } else {
         createApplication(payload);
-        toast('Candidatura criada');
+        toast('Candidatura criada com sucesso');
+      }
+    },
+  });
+}
+
+/* ---------- oportunidade (manual) ---------- */
+export function openOpportunityModal(id = '', preset = {}) {
+  const state = getState();
+  const opp = id ? (state.opportunities || []).find(o => o.id === id) : null;
+
+  openModal({
+    title: opp ? 'Editar oportunidade' : 'Nova oportunidade identificada',
+    wide: true,
+    body: `
+      <div class="grid-2">
+        ${field('Empresa', 'company', opp?.company || preset.company || '', { required: true, placeholder: 'Ex.: Appen / Telus' })}
+        ${field('Cargo / Projeto', 'title', opp?.title || preset.title || '', { required: true, placeholder: 'Ex.: Search Evaluator' })}
+      </div>
+      <div class="grid-2">
+        ${field('Plataforma / Fonte', 'source', opp?.source || preset.source || 'Manual', { placeholder: 'LinkedIn / Remoto / Upwork' })}
+        ${select('Situação', 'status', [
+          { value: 'found', label: 'Identificada (não aplicada)' },
+          { value: 'reviewing', label: 'Em análise' },
+          { value: 'applied', label: 'Inscrição realizada (convertida)' },
+          { value: 'discarded', label: 'Descartada' },
+        ], opp?.status || preset.status || 'found')}
+      </div>
+      <div class="grid-2">
+        ${field('Link da vaga', 'url', opp?.url || preset.url || '', { placeholder: 'https://…' })}
+        ${select('Prioridade estimada', 'priority', PRIORITIES.map(p => ({ value: p.id, label: p.name })), opp?.priority || preset.priority || 'normal')}
+      </div>
+      ${textarea('Descrição e requisitos', 'description', opp?.description || preset.description || '', { rows: 4, placeholder: 'Requisitos da vaga, qualificações necessárias…' })}
+    `,
+    async onSubmit(data) {
+      const payload = {
+        id: opp?.id || `opp_${Date.now().toString(36)}`,
+        company: data.company.trim(),
+        title: data.title.trim(),
+        source: data.source.trim() || 'Manual',
+        status: data.status,
+        url: data.url.trim(),
+        priority: data.priority,
+        description: data.description.trim(),
+        collectedAt: opp?.collectedAt || new Date().toISOString(),
+      };
+      if (!payload.company || !payload.title) {
+        toast('Informe a empresa e o cargo/projeto.', 'error');
+        return false;
+      }
+      try {
+        await api.putRecord('opportunity', payload);
+        const st = getState();
+        const existingIdx = (st.opportunities || []).findIndex(o => o.id === payload.id);
+        if (existingIdx >= 0) st.opportunities[existingIdx] = payload;
+        else {
+          if (!st.opportunities) st.opportunities = [];
+          st.opportunities.unshift(payload);
+        }
+        toast('Oportunidade salva');
+      } catch (err) {
+        toast(`Erro ao salvar oportunidade: ${err.message}`, 'error');
       }
     },
   });

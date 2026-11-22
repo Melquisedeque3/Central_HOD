@@ -75,12 +75,20 @@ export async function fetchHealth() {
 }
 
 /* ---------- registros ---------- */
-export function putRecord(type, data) {
-  return request('/api/records', { method: 'POST', body: { type, data } });
+export function putRecord(type, data, extra = {}) {
+  return request('/api/records', { method: 'POST', body: { type, data, ...extra } });
 }
 
 export function deleteRecord(type, id) {
   return request(`/api/records/${type}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function convertOpportunity(id, overrides = {}) {
+  return request(`/api/opportunities/${encodeURIComponent(id)}/convert`, { method: 'POST', body: { overrides } });
+}
+
+export function syncGmail() {
+  return request('/api/collectors/gmail', { method: 'POST', timeout: 60000 });
 }
 
 export function putBag(patch) {
@@ -111,31 +119,29 @@ export function writeNote(path, content) {
   return request('/api/note', { method: 'PUT', body: { path, content } });
 }
 
-/* ---------- Hermes ---------- */
-export async function hermesModels() {
-  const data = await request('/api/hermes/models', { timeout: 10000 });
-  return (data.data || []).map(m => ({ id: m.id, name: m.name || m.id }));
-}
-
+/* ---------- AI & Agentes ---------- */
 /**
- * Chat com streaming SSE.
+ * Chat com streaming SSE via /api/ai/chat.
  * @param {object} opts
- * @param {string} opts.model
+ * @param {string} [opts.model]
+ * @param {string} [opts.system]
  * @param {Array<{role:string,content:string}>} opts.messages
- * @param {(delta:string)=>void} opts.onDelta
+ * @param {(delta:string, full:string)=>void} opts.onDelta
+ * @param {AbortSignal} [opts.signal]
+ * @param {number} [opts.temperature]
  * @returns {Promise<string>} texto completo
  */
-export async function hermesChatStream({ model, messages, onDelta, signal, temperature = 0.6 }) {
-  const res = await fetch(`${BASE}/api/hermes/chat`, {
+export async function aiChatStream({ model, system, messages, onDelta, signal, temperature = 0.5 }) {
+  const res = await fetch(`${BASE}/api/ai/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ model, messages, stream: true, temperature }),
+    body: JSON.stringify({ model, system, messages, stream: true, temperature }),
     signal,
   });
 
   if (!res.ok) {
     const text = await res.text();
-    let msg = `Hermes HTTP ${res.status}`;
+    let msg = `AI HTTP ${res.status}`;
     try { msg = JSON.parse(text).error || msg; } catch { /* texto puro */ }
     throw new Error(msg);
   }
@@ -172,11 +178,25 @@ export async function hermesChatStream({ model, messages, onDelta, signal, tempe
   return full;
 }
 
-export async function hermesChatOnce({ model, messages, temperature = 0.4, timeout = 180000 }) {
-  const data = await request('/api/hermes/chat', {
+export function runAgent(agentId, body = {}) {
+  return request(`/api/agent/run/${agentId}`, { method: 'POST', body });
+}
+
+export function getAgentStatus(agentId) {
+  return request(`/api/agent/status/${agentId}`);
+}
+
+export function getAgentMessages(unreadOnly = false) {
+  return request(`/api/agent/messages${unreadOnly ? '?unread=true' : ''}`);
+}
+
+/* Aliases retrocompatíveis */
+export const hermesChatStream = aiChatStream;
+export async function hermesModels() { return []; }
+export async function hermesChatOnce({ model, messages, temperature = 0.4 }) {
+  const data = await request('/api/ai/chat', {
     method: 'POST',
     body: { model, messages, stream: false, temperature },
-    timeout,
   });
   return data.choices?.[0]?.message?.content || '';
 }

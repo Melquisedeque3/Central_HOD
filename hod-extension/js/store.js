@@ -24,14 +24,25 @@ const LEGACY_KEY = 'hodControleV2';
 const MIGRATED_FLAG = 'hod:vault-migrated';
 
 export const STAGES = [
-  { id: 'mapeada', name: 'Mapeada', short: 'Mapeada', color: '#7ecbdb' },
-  { id: 'aplicada', name: 'Candidatura enviada', short: 'Enviada', color: '#38bdf8' },
-  { id: 'teste', name: 'Teste / Prova', short: 'Teste', color: '#f4c77a' },
-  { id: 'entrevista', name: 'Entrevista', short: 'Entrevista', color: '#b8a4f4' },
-  { id: 'proposta', name: 'Proposta', short: 'Proposta', color: '#7ec8a4' },
-  { id: 'ativa', name: 'Ativa', short: 'Ativa', color: '#56d98f' },
-  { id: 'encerrada', name: 'Encerrada', short: 'Encerrada', color: '#5c6b82' },
+  { id: 'aplicado', name: 'Aplicado', short: 'Aplicado', color: '#38bdf8' },
+  { id: 'em_certificacao', name: 'Em Certificação', short: 'Certificação', color: '#f4c77a' },
+  { id: 'aprovado', name: 'Aprovado', short: 'Aprovado', color: '#4ade80' },
+  { id: 'reprovado', name: 'Reprovado', short: 'Reprovado', color: '#f87171' },
+  { id: 'encerrado', name: 'Encerrado', short: 'Encerrado', color: '#64748b' },
 ];
+
+export const VALID_TRANSITIONS = {
+  aplicado: ['em_certificacao', 'reprovado'],
+  em_certificacao: ['aprovado', 'reprovado'],
+  aprovado: ['encerrado'],
+  reprovado: [],
+  encerrado: [],
+};
+
+export function canTransition(fromStage, toStage) {
+  if (!fromStage || !toStage || fromStage === toStage) return true;
+  return (VALID_TRANSITIONS[fromStage] || []).includes(toStage);
+}
 
 export const PRIORITIES = [
   { id: 'urgente', name: 'Urgente', color: '#ef8c8c', weight: 0 },
@@ -83,7 +94,20 @@ export function uid(prefix = 'id') {
 
 export function nowISO() { return new Date().toISOString(); }
 
-export function stageById(id) { return STAGES.find(s => s.id === id) || STAGES[0]; }
+const STAGE_FALLBACKS = {
+  mapeada: 'aplicado',
+  aplicada: 'aplicado',
+  teste: 'em_certificacao',
+  entrevista: 'em_certificacao',
+  proposta: 'aprovado',
+  ativa: 'aprovado',
+  encerrada: 'encerrado',
+};
+
+export function stageById(id) {
+  const norm = STAGE_FALLBACKS[id] || id;
+  return STAGES.find(s => s.id === norm) || STAGES[0];
+}
 export function priorityById(id) { return PRIORITIES.find(p => p.id === id) || PRIORITIES[2]; }
 
 /* ---------- estado ---------- */
@@ -142,11 +166,13 @@ function normalize(raw) {
 }
 
 function normalizeApp(a) {
+  const rawStage = a.stage || 'aplicado';
+  const stage = STAGES.some(s => s.id === rawStage) ? rawStage : (STAGE_FALLBACKS[rawStage] || 'aplicado');
   return {
     id: a.id || uid('app'),
     company: a.company || 'Sem empresa',
     role: a.role || '',
-    stage: STAGES.some(s => s.id === a.stage) ? a.stage : 'mapeada',
+    stage,
     priority: PRIORITIES.some(p => p.id === a.priority) ? a.priority : 'normal',
     nextAction: a.nextAction || '',
     deadline: a.deadline || '',
@@ -154,6 +180,9 @@ function normalizeApp(a) {
     link: a.link || '',
     location: a.location || '',
     compensation: a.compensation || '',
+    mainTaskId: a.mainTaskId || '',
+    taskEnabled: a.taskEnabled !== false,
+    closeReason: a.closeReason || '',
     tags: Array.isArray(a.tags) ? a.tags : [],
     notes: a.notes || '',
     steps: Array.isArray(a.steps) ? a.steps.filter(Boolean).map(s => ({
@@ -182,6 +211,7 @@ function normalizeTask(t) {
     dueAt: t.dueAt || '',
     appId: t.appId || '',
     appLabel: t.appLabel || '',
+    isMain: !!t.isMain,
     createdAt: t.createdAt || nowISO(),
     completedAt: t.completedAt || '',
   };
@@ -275,10 +305,24 @@ export function flush() {
 }
 
 /* ---------- persistência ---------- */
-function persistRecord(type, record) {
+function persistRecord(type, record, extra = {}) {
   scheduleMirror();
   if (!isVault()) return Promise.resolve();
-  return api.putRecord(type, record).catch(err => {
+  return api.putRecord(type, record, extra).then(res => {
+    if (res?.syncedTask && type === 'application') {
+      const idx = state.tasks.findIndex(t => t.id === res.syncedTask.id);
+      if (idx >= 0) state.tasks[idx] = normalizeTask(res.syncedTask);
+      else state.tasks.unshift(normalizeTask(res.syncedTask));
+      emit();
+    }
+    if (res?.syncedApp && type === 'task') {
+      const idx = state.applications.findIndex(a => a.id === res.syncedApp.id);
+      if (idx >= 0) state.applications[idx] = normalizeApp(res.syncedApp);
+      else state.applications.unshift(normalizeApp(res.syncedApp));
+      emit();
+    }
+    return res;
+  }).catch(err => {
     throw new Error(`Vault: ${err.message}`);
   });
 }
@@ -402,8 +446,8 @@ export async function reload() {
 export function createApplication(data = {}) {
   const app = normalizeApp({
     id: uid('app'),
-    stage: 'mapeada',
-    priority: 'importante',
+    stage: 'aplicado',
+    priority: 'normal',
     location: 'Remoto',
     ...data,
   });
@@ -419,28 +463,53 @@ export function createApplication(data = {}) {
 export function getApplication(id) { return state.applications.find(a => a.id === id) || null; }
 export const appById = getApplication;
 
-export function updateApplication(id, patch, historyText = '') {
+export function updateApplication(id, patch, historyText = '', opts = {}) {
   const app = getApplication(id);
   if (!app) return null;
   Object.assign(app, patch, { updatedAt: nowISO() });
   if (historyText) app.history.unshift({ at: nowISO(), text: historyText });
   state.updatedAt = nowISO();
-  enqueue(() => persistRecord('application', app));
+  enqueue(() => persistRecord('application', app, opts));
   emit();
   return app;
 }
 
-export function moveApplication(id, stageId) {
+export function moveApplication(id, stageId, opts = {}) {
   const app = getApplication(id);
   if (!app || app.stage === stageId) return;
   const from = stageById(app.stage).name;
   const to = stageById(stageId).name;
   app.stage = stageId;
+  if (opts.closeReason) app.closeReason = opts.closeReason;
   app.updatedAt = nowISO();
-  app.history.unshift({ at: nowISO(), text: `Etapa: ${from} → ${to}` });
+  app.history.unshift({ at: nowISO(), text: `Etapa: ${from} → ${to}${opts.reason ? ' (' + opts.reason + ')' : ''}` });
   state.updatedAt = nowISO();
-  enqueue(() => persistRecord('application', app));
+  enqueue(() => persistRecord('application', app, opts));
   emit();
+}
+
+export async function convertOpportunityAction(oppId, overrides = {}) {
+  const opp = (state.opportunities || []).find(o => o.id === oppId);
+  if (!opp) throw new Error('Oportunidade não encontrada.');
+  const res = await api.convertOpportunity(oppId, overrides);
+  if (res?.opportunity) {
+    const idx = (state.opportunities || []).findIndex(o => o.id === oppId);
+    if (idx >= 0) state.opportunities[idx] = res.opportunity;
+  }
+  if (res?.application) {
+    const app = normalizeApp(res.application);
+    const existingIdx = state.applications.findIndex(a => a.id === app.id);
+    if (existingIdx >= 0) state.applications[existingIdx] = app;
+    else state.applications.unshift(app);
+  }
+  if (res?.task) {
+    const task = normalizeTask(res.task);
+    const existingIdx = state.tasks.findIndex(t => t.id === task.id);
+    if (existingIdx >= 0) state.tasks[existingIdx] = task;
+    else state.tasks.unshift(task);
+  }
+  emit();
+  return res;
 }
 
 export function deleteApplication(id) {

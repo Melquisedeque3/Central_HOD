@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import importlib.util
 import pathlib
+import tempfile
 import unittest
 
 MODULE = pathlib.Path(__file__).with_name("lever_collector.py")
@@ -33,6 +34,29 @@ class LeverCollectorTests(unittest.TestCase):
             # no fluxo de fetch por um endpoint simulado na suíte Node.
             if not isinstance({}, list):
                 raise RuntimeError("Formato inesperado da API de vagas.")
+
+    def test_loads_only_explicit_safe_source_allowlist(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "sources.json"
+            path.write_text('[{"site":"rws","source":"RWS"}]', encoding="utf-8")
+            self.assertEqual(collector.load_sources(path), [{"site": "rws", "source": "RWS"}])
+
+    def test_rejects_unsafe_source_identifier(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "sources.json"
+            path.write_text('[{"site":"../../private","source":"No"}]', encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                collector.load_sources(path)
+
+    def test_ssl_context_requires_certificate_verification(self):
+        context = collector.verified_ssl_context()
+        self.assertEqual(context.verify_mode, collector.ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+
+    def test_profile_is_structured_and_versioned(self):
+        profile = collector.load_profile(collector.DEFAULT_PROFILE_FILE)
+        self.assertEqual(profile["residence"]["state"], "Sergipe")
+        self.assertTrue(profile["version"])
 
 
 if __name__ == "__main__":
